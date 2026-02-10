@@ -1,0 +1,32 @@
+# Python general
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Entornos virtuales
+venv/
+env/
+.venv/
+
+# Variables de entorno
+.env
+.env.*
+
+# Bases de datos (Solicitado)
+*.sqlite3
+*.sqlite
+*.db
+
+# Carpetas especificas (Solicitado)
+/back
+
+# IDEs y editores
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+
+# Mac OS
+.DS_Store
