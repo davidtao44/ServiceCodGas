@@ -1,13 +1,13 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime
-from app.models.models import UserRole, TankStatus, TransactionType
+from app.models.models import UserRole, JornadaShift, JornadaStatus, DebtStatus
 
 class UserBase(BaseModel):
     email: EmailStr
     first_name: str
     last_name: str
-    role: UserRole = UserRole.USER
+    role: UserRole = UserRole.VENDEDOR
 
 class UserCreate(UserBase):
     password: str
@@ -35,87 +35,140 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     email: Optional[str] = None
 
-class GasTankTypeBase(BaseModel):
+class TankTypeBase(BaseModel):
     name: str
     capacity: float
+    price: float
     description: Optional[str] = None
 
-class GasTankTypeCreate(GasTankTypeBase):
+class TankTypeCreate(TankTypeBase):
     pass
 
-class GasTankType(GasTankTypeBase):
+class TankTypeUpdate(BaseModel):
+    name: Optional[str] = None
+    capacity: Optional[float] = None
+    price: Optional[float] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class TankType(TankTypeBase):
     id: int
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
-
-class GasTankBase(BaseModel):
-    type_id: int
-    serial_number: str
-    current_status: TankStatus = TankStatus.AVAILABLE
-    location: Optional[str] = None
-
-class GasTankCreate(GasTankBase):
-    pass
-
-class GasTankUpdate(BaseModel):
-    current_status: Optional[TankStatus] = None
-    location: Optional[str] = None
-    last_maintenance: Optional[datetime] = None
-
-class GasTank(GasTankBase):
-    id: int
-    last_maintenance: Optional[datetime] = None
+    is_active: bool
     created_at: datetime
     updated_at: Optional[datetime] = None
-    tank_type: GasTankType
     
     class Config:
         from_attributes = True
 
-class InventoryBase(BaseModel):
-    tank_id: int
-    quantity_available: int
-    minimum_stock: int = 5
+class InventoryLocationBase(BaseModel):
+    tank_type_id: int
+    location: str
+    quantity: int = 0
 
-class InventoryCreate(InventoryBase):
+class InventoryLocationCreate(InventoryLocationBase):
     pass
 
-class InventoryUpdate(BaseModel):
-    quantity_available: Optional[int] = None
-    minimum_stock: Optional[int] = None
+class InventoryLocationUpdate(BaseModel):
+    quantity: Optional[int] = None
 
-class Inventory(InventoryBase):
+class InventoryLocation(InventoryLocationBase):
     id: int
-    last_updated: datetime
-    updated_by: Optional[int] = None
-    tank: GasTank
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    tank_type: TankType
     
     class Config:
         from_attributes = True
 
-class TransactionBase(BaseModel):
-    tank_id: int
-    transaction_type: TransactionType
+class EmbasadoRequest(BaseModel):
+    tank_type_id: int
+    filled_quantity: int
+    sent_to_sale_quantity: int
+
+class EmbasadoResponse(BaseModel):
+    tank_type_id: int
+    location_planta_before: int
+    location_planta_after: int
+    location_venta_before: int
+    location_venta_after: int
+    filled_quantity: int
+    sent_to_sale_quantity: int
+
+class JornadaBase(BaseModel):
+    shift: JornadaShift
+
+class JornadaCreate(JornadaBase):
+    seller_id: int
+
+class JornadaUpdate(BaseModel):
+    status: Optional[JornadaStatus] = None
+    total_money: Optional[float] = None
+
+class Jornada(JornadaBase):
+    id: int
+    date: datetime
+    seller_id: int
+    status: JornadaStatus
+    total_sales: float
+    total_money: float
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    seller: User
+    
+    class Config:
+        from_attributes = True
+
+class SaleBase(BaseModel):
+    jornada_id: int
+    tank_type_id: int
     quantity: int
-    notes: Optional[str] = None
 
-class TransactionCreate(TransactionBase):
+class SaleCreate(SaleBase):
     pass
 
-class Transaction(TransactionBase):
+class Sale(SaleBase):
     id: int
-    user_id: int
-    timestamp: datetime
-    tank: GasTank
-    user: User
+    unit_price: float
+    total: float
+    created_at: datetime
+    tank_type: TankType
+    
+    class Config:
+        from_attributes = True
+
+class DebtBase(BaseModel):
+    jornada_id: int
+    seller_id: int
+    amount: float
+
+class DebtCreate(DebtBase):
+    pass
+
+class Debt(DebtBase):
+    id: int
+    status: DebtStatus
+    assigned_at: datetime
+    paid_at: Optional[datetime] = None
+    jornada: Jornada
+    seller: User
     
     class Config:
         from_attributes = True
 
 class DashboardStats(BaseModel):
-    total_tanks: int
-    available_tanks: int
-    low_stock_items: int
-    recent_transactions: List[Transaction]
+    total_tank_types: int
+    total_inventory_planta: int
+    total_inventory_venta: int
+    open_jornadas: int
+    pending_debts: float
+    recent_sales: List[Sale]
+
+class CloseJornadaRequest(BaseModel):
+    total_money: float
+
+class AssignDebtRequest(BaseModel):
+    seller_id: int
+    amount: float
+
+class PayDebtRequest(BaseModel):
+    pass
