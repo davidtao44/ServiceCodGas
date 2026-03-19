@@ -1,173 +1,134 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List
 from app.core.database.database import get_db
-from app.models.models import GasTank, GasTankType, Inventory, Transaction, TransactionType
-from app.schemas.schemas import GasTank as GasTankSchema, GasTankCreate, GasTankUpdate, Inventory as InventorySchema, InventoryCreate, InventoryUpdate, Transaction as TransactionSchema, TransactionCreate
+from app.models.models import InventoryLocation, TankType, UserRole
+from app.schemas.schemas import (
+    InventoryLocation as InventoryLocationSchema,
+    InventoryLocationCreate,
+    InventoryLocationUpdate,
+    InventoryLocationBase
+)
 from app.auth.auth import get_current_active_user
+from app.tank_types.tank_types import require_role
 
 router = APIRouter()
 
-@router.get("/tanks", response_model=List[GasTankSchema])
-def get_tanks(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    status: Optional[str] = None,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_active_user)
-):
-    query = db.query(GasTank).join(GasTankType)
-    if status:
-        query = query.filter(GasTank.current_status == status)
-    return query.offset(skip).limit(limit).all()
-
-@router.post("/tanks", response_model=GasTankSchema)
-def create_tank(
-    tank: GasTankCreate,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_active_user)
-):
-    if current_user.role.value not in ["admin", "superadmin"]:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
-    
-    db_tank = GasTank(**tank.dict())
-    db.add(db_tank)
-    db.commit()
-    db.refresh(db_tank)
-    
-    inventory = Inventory(tank_id=db_tank.id, quantity_available=0, updated_by=current_user.id)
-    db.add(inventory)
-    db.commit()
-    
-    return db_tank
-
-@router.get("/tanks/{tank_id}", response_model=GasTankSchema)
-def get_tank(tank_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):
-    tank = db.query(GasTank).filter(GasTank.id == tank_id).first()
-    if not tank:
-        raise HTTPException(status_code=404, detail="Tank not found")
-    return tank
-
-@router.put("/tanks/{tank_id}", response_model=GasTankSchema)
-def update_tank(
-    tank_id: int,
-    tank_update: GasTankUpdate,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_active_user)
-):
-    if current_user.role.value not in ["admin", "superadmin"]:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
-    
-    tank = db.query(GasTank).filter(GasTank.id == tank_id).first()
-    if not tank:
-        raise HTTPException(status_code=404, detail="Tank not found")
-    
-    update_data = tank_update.dict(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(tank, field, value)
-    
-    db.commit()
-    db.refresh(tank)
-    return tank
-
-@router.get("/inventory", response_model=List[InventorySchema])
+@router.get("/inventory", response_model=List[InventoryLocationSchema])
 def get_inventory(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    low_stock: bool = Query(False),
+    location: str = None,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_active_user)
 ):
-    query = db.query(Inventory).join(GasTank).join(GasTankType)
-    
-    if low_stock:
-        query = query.filter(Inventory.quantity_available <= Inventory.minimum_stock)
-    
-    return query.offset(skip).limit(limit).all()
+    query = db.query(InventoryLocation).join(TankType)
+    if location:
+        query = query.filter(InventoryLocation.location == location)
+    return query.all()
 
-@router.put("/inventory/{inventory_id}", response_model=InventorySchema)
+@router.get("/inventory/planta", response_model=List[InventoryLocationSchema])
+def get_inventory_planta(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_active_user)
+):
+    return db.query(InventoryLocation).join(TankType).filter(
+        InventoryLocation.location == "planta"
+    ).all()
+
+@router.get("/inventory/venta", response_model=List[InventoryLocationSchema])
+def get_inventory_venta(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_active_user)
+):
+    return db.query(InventoryLocation).join(TankType).filter(
+        InventoryLocation.location == "venta"
+    ).all()
+
+@router.put("/inventory/{inventory_id}", response_model=InventoryLocationSchema)
 def update_inventory(
     inventory_id: int,
-    inventory_update: InventoryUpdate,
+    inventory_update: InventoryLocationUpdate,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_active_user)
+    current_user = Depends(require_role(["superadmin", "admin"]))
 ):
-    if current_user.role.value not in ["admin", "superadmin"]:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
-    
-    inventory = db.query(Inventory).filter(Inventory.id == inventory_id).first()
+    inventory = db.query(InventoryLocation).filter(InventoryLocation.id == inventory_id).first()
     if not inventory:
-        raise HTTPException(status_code=404, detail="Inventory not found")
+        raise HTTPException(status_code=404, detail="Inventario no encontrado")
     
-    old_quantity = inventory.quantity_available
-    update_data = inventory_update.dict(exclude_unset=True)
-    
+    update_data = inventory_update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(inventory, field, value)
-    
-    inventory.updated_by = current_user.id
-    
-    if "quantity_available" in update_data:
-        quantity_diff = inventory.quantity_available - old_quantity
-        transaction_type = TransactionType.IN if quantity_diff > 0 else TransactionType.OUT
-        
-        transaction = Transaction(
-            tank_id=inventory.tank_id,
-            transaction_type=transaction_type,
-            quantity=abs(quantity_diff),
-            user_id=current_user.id,
-            notes=f"Inventory adjustment: {quantity_diff:+d}"
-        )
-        db.add(transaction)
     
     db.commit()
     db.refresh(inventory)
     return inventory
 
-@router.post("/transactions", response_model=TransactionSchema)
-def create_transaction(
-    transaction: TransactionCreate,
+@router.post("/inventory/initialize")
+def initialize_inventory(
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_active_user)
+    current_user = Depends(require_role(["superadmin", "admin"]))
 ):
-    if current_user.role.value not in ["admin", "superadmin"]:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    tank_types = db.query(TankType).filter(TankType.is_active == True).all()
     
-    inventory = db.query(Inventory).filter(Inventory.tank_id == transaction.tank_id).first()
-    if not inventory:
-        raise HTTPException(status_code=404, detail="Tank inventory not found")
+    created = []
+    for tank_type in tank_types:
+        planta_exists = db.query(InventoryLocation).filter(
+            InventoryLocation.tank_type_id == tank_type.id,
+            InventoryLocation.location == "planta"
+        ).first()
+        
+        venta_exists = db.query(InventoryLocation).filter(
+            InventoryLocation.tank_type_id == tank_type.id,
+            InventoryLocation.location == "venta"
+        ).first()
+        
+        if not planta_exists:
+            planta = InventoryLocation(
+                tank_type_id=tank_type.id,
+                location="planta",
+                quantity=0
+            )
+            db.add(planta)
+            created.append(f"planta - {tank_type.name}")
+        
+        if not venta_exists:
+            venta = InventoryLocation(
+                tank_type_id=tank_type.id,
+                location="venta",
+                quantity=0
+            )
+            db.add(venta)
+            created.append(f"venta - {tank_type.name}")
     
-    if transaction.transaction_type == TransactionType.OUT:
-        if inventory.quantity_available < transaction.quantity:
-            raise HTTPException(status_code=400, detail="Insufficient stock")
-        inventory.quantity_available -= transaction.quantity
-    else:
-        inventory.quantity_available += transaction.quantity
-    
-    inventory.updated_by = current_user.id
-    
-    db_transaction = Transaction(
-        **transaction.dict(),
-        user_id=current_user.id
-    )
-    
-    db.add(db_transaction)
     db.commit()
-    db.refresh(db_transaction)
-    
-    return db_transaction
+    return {"message": "Inventario inicializado", "created": created}
 
-@router.get("/transactions", response_model=List[TransactionSchema])
-def get_transactions(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    tank_id: Optional[int] = None,
+@router.get("/inventory/summary")
+def get_inventory_summary(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_active_user)
 ):
-    query = db.query(Transaction).join(GasTank).join(GasTankType)
+    tank_types = db.query(TankType).filter(TankType.is_active == True).all()
     
-    if tank_id:
-        query = query.filter(Transaction.tank_id == tank_id)
+    summary = []
+    for tt in tank_types:
+        planta = db.query(InventoryLocation).filter(
+            InventoryLocation.tank_type_id == tt.id,
+            InventoryLocation.location == "planta"
+        ).first()
+        
+        venta = db.query(InventoryLocation).filter(
+            InventoryLocation.tank_type_id == tt.id,
+            InventoryLocation.location == "venta"
+        ).first()
+        
+        summary.append({
+            "tank_type_id": tt.id,
+            "tank_type_name": tt.name,
+            "capacity": tt.capacity,
+            "price": tt.price,
+            "planta": planta.quantity if planta else 0,
+            "venta": venta.quantity if venta else 0,
+            "total": (planta.quantity if planta else 0) + (venta.quantity if venta else 0)
+        })
     
-    return query.order_by(Transaction.timestamp.desc()).offset(skip).limit(limit).all()
+    return summary

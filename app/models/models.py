@@ -7,18 +7,21 @@ import enum
 class UserRole(str, enum.Enum):
     SUPERADMIN = "superadmin"
     ADMIN = "admin"
-    USER = "user"
+    EMBASADOR = "embasador"
+    VENDEDOR = "vendedor"
 
-class TankStatus(str, enum.Enum):
-    AVAILABLE = "available"
-    IN_USE = "in_use"
-    MAINTENANCE = "maintenance"
-    RETIRED = "retired"
+class JornadaShift(str, enum.Enum):
+    MANANA = "mañana"
+    TARDE = "tarde"
+    NOCHE = "noche"
 
-class TransactionType(str, enum.Enum):
-    IN = "in"
-    OUT = "out"
-    TRANSFER = "transfer"
+class JornadaStatus(str, enum.Enum):
+    ABIERTA = "abierta"
+    CERRADA = "cerrada"
+
+class DebtStatus(str, enum.Enum):
+    PENDIENTE = "pendiente"
+    PAGADA = "pagada"
 
 class User(Base):
     __tablename__ = "users"
@@ -28,63 +31,82 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
-    role = Column(Enum(UserRole), default=UserRole.USER, nullable=False)
+    role = Column(Enum(UserRole), default=UserRole.VENDEDOR, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    transactions = relationship("Transaction", back_populates="user")
+    jornadas = relationship("Jornada", back_populates="seller")
+    debts = relationship("Debt", back_populates="seller")
 
-class GasTankType(Base):
-    __tablename__ = "gas_tank_types"
+class TankType(Base):
+    __tablename__ = "tank_types"
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     capacity = Column(Float, nullable=False)
+    price = Column(Float, nullable=False)
     description = Column(String)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    tanks = relationship("GasTank", back_populates="tank_type")
-
-class GasTank(Base):
-    __tablename__ = "gas_tanks"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    type_id = Column(Integer, ForeignKey("gas_tank_types.id"), nullable=False)
-    serial_number = Column(String, unique=True, index=True, nullable=False)
-    current_status = Column(Enum(TankStatus), default=TankStatus.AVAILABLE, nullable=False)
-    location = Column(String)
-    last_maintenance = Column(DateTime(timezone=True))
+    is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    tank_type = relationship("GasTankType", back_populates="tanks")
-    inventory = relationship("Inventory", back_populates="tank", uselist=False)
-    transactions = relationship("Transaction", back_populates="tank")
+    inventory_locations = relationship("InventoryLocation", back_populates="tank_type")
+    sales = relationship("Sale", back_populates="tank_type")
 
-class Inventory(Base):
-    __tablename__ = "inventory"
+class InventoryLocation(Base):
+    __tablename__ = "inventory_locations"
     
     id = Column(Integer, primary_key=True, index=True)
-    tank_id = Column(Integer, ForeignKey("gas_tanks.id"), unique=True, nullable=False)
-    quantity_available = Column(Integer, default=0, nullable=False)
-    minimum_stock = Column(Integer, default=5, nullable=False)
-    last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    updated_by = Column(Integer, ForeignKey("users.id"))
+    tank_type_id = Column(Integer, ForeignKey("tank_types.id"), nullable=False)
+    location = Column(String, nullable=False)
+    quantity = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    tank = relationship("GasTank", back_populates="inventory")
-    updater = relationship("User")
+    tank_type = relationship("TankType", back_populates="inventory_locations")
 
-class Transaction(Base):
-    __tablename__ = "transactions"
+class Jornada(Base):
+    __tablename__ = "jornadas"
     
     id = Column(Integer, primary_key=True, index=True)
-    tank_id = Column(Integer, ForeignKey("gas_tanks.id"), nullable=False)
-    transaction_type = Column(Enum(TransactionType), nullable=False)
+    date = Column(DateTime(timezone=True), server_default=func.now())
+    shift = Column(Enum(JornadaShift), nullable=False)
+    seller_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    status = Column(Enum(JornadaStatus), default=JornadaStatus.ABIERTA, nullable=False)
+    total_sales = Column(Float, default=0.0)
+    total_money = Column(Float, default=0.0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    seller = relationship("User", back_populates="jornadas")
+    sales = relationship("Sale", back_populates="jornada")
+    debts = relationship("Debt", back_populates="jornada")
+
+class Sale(Base):
+    __tablename__ = "sales"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    jornada_id = Column(Integer, ForeignKey("jornadas.id"), nullable=False)
+    tank_type_id = Column(Integer, ForeignKey("tank_types.id"), nullable=False)
     quantity = Column(Integer, nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    timestamp = Column(DateTime(timezone=True), server_default=func.now())
-    notes = Column(String)
+    unit_price = Column(Float, nullable=False)
+    total = Column(Float, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
     
-    tank = relationship("GasTank", back_populates="transactions")
-    user = relationship("User", back_populates="transactions")
+    jornada = relationship("Jornada", back_populates="sales")
+    tank_type = relationship("TankType", back_populates="sales")
+
+class Debt(Base):
+    __tablename__ = "debts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    jornada_id = Column(Integer, ForeignKey("jornadas.id"), nullable=False)
+    seller_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    amount = Column(Float, nullable=False)
+    status = Column(Enum(DebtStatus), default=DebtStatus.PENDIENTE, nullable=False)
+    assigned_at = Column(DateTime(timezone=True), server_default=func.now())
+    paid_at = Column(DateTime(timezone=True), nullable=True)
+    
+    jornada = relationship("Jornada", back_populates="debts")
+    seller = relationship("User", back_populates="debts")
