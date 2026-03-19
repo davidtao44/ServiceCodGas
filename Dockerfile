@@ -18,4 +18,4 @@ COPY . .
 EXPOSE 8000
 
 # Ejecutar FastAPI en modo producción
-CMD ["fastapi", "run"]
+CMD ["fastapi", "run", "--host", "0.0.0.0", "--port", "8000"]
