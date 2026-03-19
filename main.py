@@ -21,7 +21,7 @@ app = FastAPI(
 )
 
 origins = [
-    "*",
+    "http://173.212.221.21:5000",
 ]
 
 app.add_middleware(
