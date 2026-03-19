@@ -18,4 +18,4 @@ COPY . .
 EXPOSE 8000
 
 # Ejecutar FastAPI en modo producción
-CMD ["bash", "-c", "echo $DATABASE_URL && fastapi run --host 0.0.0.0 --port 8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
