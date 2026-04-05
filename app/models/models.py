@@ -126,47 +126,74 @@ class EmptyCylinderMovement(Base):
     __tablename__ = "empty_cylinder_movements"
     
     id = Column(Integer, primary_key=True, index=True)
-    cylinder_type_id = Column(Integer, ForeignKey("tank_types.id"), nullable=False)
-    quantity = Column(Integer, nullable=False)
     source = Column(String, nullable=False)
     received_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     delivered_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     date = Column(DateTime(timezone=True), server_default=func.now())
     notes = Column(Text, nullable=True)
     
-    cylinder_type = relationship("TankType")
     received_by = relationship("User", foreign_keys=[received_by_user_id])
     delivered_by = relationship("User", foreign_keys=[delivered_by_user_id])
+    details = relationship("EmptyCylinderMovementDetail", back_populates="movement", cascade="all, delete-orphan")
+
+class EmptyCylinderMovementDetail(Base):
+    __tablename__ = "empty_cylinder_movement_details"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    movement_id = Column(Integer, ForeignKey("empty_cylinder_movements.id"), nullable=False)
+    cylinder_type_id = Column(Integer, ForeignKey("tank_types.id"), nullable=False)
+    quantity = Column(Integer, nullable=False)
+    
+    movement = relationship("EmptyCylinderMovement", back_populates="details")
+    cylinder_type = relationship("TankType")
 
 class FillingOperation(Base):
     __tablename__ = "filling_operations"
     
     id = Column(Integer, primary_key=True, index=True)
-    cylinder_type_id = Column(Integer, ForeignKey("tank_types.id"), nullable=False)
-    quantity = Column(Integer, nullable=False)
-    kg_used = Column(Float, nullable=False)
     performed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     date = Column(DateTime(timezone=True), server_default=func.now())
     notes = Column(Text, nullable=True)
     
-    cylinder_type = relationship("TankType")
     performed_by = relationship("User")
+    details = relationship("FillingOperationDetail", back_populates="operation", cascade="all, delete-orphan")
+
+class FillingOperationDetail(Base):
+    __tablename__ = "filling_operation_details"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    operation_id = Column(Integer, ForeignKey("filling_operations.id"), nullable=False)
+    cylinder_type_id = Column(Integer, ForeignKey("tank_types.id"), nullable=False)
+    quantity = Column(Integer, nullable=False)
+    kg_used = Column(Float, nullable=False)
+    
+    operation = relationship("FillingOperation", back_populates="details")
+    cylinder_type = relationship("TankType")
 
 class FullCylinderOutput(Base):
     __tablename__ = "full_cylinder_outputs"
     
     id = Column(Integer, primary_key=True, index=True)
-    cylinder_type_id = Column(Integer, ForeignKey("tank_types.id"), nullable=False)
-    quantity = Column(Integer, nullable=False)
     destination = Column(String, nullable=False)
     delivered_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     transported_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     date = Column(DateTime(timezone=True), server_default=func.now())
     notes = Column(Text, nullable=True)
     
-    cylinder_type = relationship("TankType")
     delivered_by = relationship("User", foreign_keys=[delivered_by_user_id])
     transported_by = relationship("User", foreign_keys=[transported_by_user_id])
+    details = relationship("FullCylinderOutputDetail", back_populates="output", cascade="all, delete-orphan")
+
+class FullCylinderOutputDetail(Base):
+    __tablename__ = "full_cylinder_output_details"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    output_id = Column(Integer, ForeignKey("full_cylinder_outputs.id"), nullable=False)
+    cylinder_type_id = Column(Integer, ForeignKey("tank_types.id"), nullable=False)
+    quantity = Column(Integer, nullable=False)
+    
+    output = relationship("FullCylinderOutput", back_populates="details")
+    cylinder_type = relationship("TankType")
 
 class GasLoad(Base):
     __tablename__ = "gas_loads"

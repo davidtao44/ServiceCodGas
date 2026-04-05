@@ -44,7 +44,12 @@ def get_gas_loads(
     if received_by_user_id:
         query = query.filter(GasLoad.received_by_user_id == received_by_user_id)
     
-    return query.order_by(GasLoad.date.desc()).all()
+    results = query.order_by(GasLoad.date.desc()).all()
+    print(f"[GAS_LOADS DEBUG] GET /gas-loads - Total cargas encontradas: {len(results)}")
+    for g in results[:3]:
+        print(f"[GAS_LOADS DEBUG]   - ID={g.id}, kg={g.kg_loaded}, fecha={g.date}")
+    
+    return results
 
 @router.get("/gas-loads/summary")
 def get_gas_loads_summary(

@@ -40,6 +40,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/auth", tags=["authentication"])
 app.include_router(users_router, prefix="/api", tags=["usuarios"])
 app.include_router(tank_types_router, prefix="/api", tags=["tipos-cilindros"])
+app.include_router(operations_router, prefix="/api", tags=["operaciones"])  # <-- PRIMERO para que /inventory funcione
 app.include_router(inventory_router, prefix="/api", tags=["inventario"])
 app.include_router(embasado_router, prefix="/api", tags=["embasado"])
 app.include_router(ventas_router, prefix="/api", tags=["ventas"])

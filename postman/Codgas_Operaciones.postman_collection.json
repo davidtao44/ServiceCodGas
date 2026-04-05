@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "codgas-operations",
 		"name": "Codgas - Operaciones",
-		"description": "Colección de endpoints para gestión de operaciones de cilindros de gas",
+		"description": "Colección de endpoints para gestión de operaciones de cilindros de gas (con soporte para múltiples tipos por operación)",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"variable": [
@@ -27,7 +27,49 @@
 	},
 	"item": [
 		{
-			"name": "1. Crear Cilindros Vacíos",
+			"name": "0. Autenticación",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var jsonData = pm.response.json();",
+							"if (jsonData.access_token) {",
+							"    pm.collectionVariables.set('token', jsonData.access_token);",
+							"    console.log('Token set:', jsonData.access_token.substring(0, 20) + '...');",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": [
+						{
+							"key": "username",
+							"value": "admin@codgas.com",
+							"type": "text"
+						},
+						{
+							"key": "password",
+							"value": "admin123",
+							"type": "text"
+						}
+					]
+				},
+				"url": {
+					"raw": "{{baseUrl}}/auth/token",
+					"host": ["{{baseUrl}}"],
+					"path": ["auth", "token"]
+				}
+			}
+		},
+		{
+			"name": "1. Crear Cilindros Vacíos (Un solo tipo)",
 			"event": [
 				{
 					"listen": "test",
@@ -50,7 +92,47 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"cylinder_type_id\": 1,\n    \"quantity\": 50,\n    \"source\": \"clientes\",\n    \"received_by_user_id\": 1,\n    \"delivered_by_user_id\": 2,\n    \"notes\": \"Cilindros回收 de clientes\"\n}",
+					"raw": "{\n    \"source\": \"clientes\",\n    \"received_by_user_id\": 1,\n    \"delivered_by_user_id\": 2,\n    \"notes\": \"Cilindros回收 de clientes\",\n    \"details\": [\n        {\n            \"cylinder_type_id\": 1,\n            \"quantity\": 50\n        }\n    ]\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/empty-cylinders",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "empty-cylinders"]
+				}
+			}
+		},
+		{
+			"name": "1b. Crear Cilindros Vacíos (Múltiples tipos)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200 or 201', function() {",
+							"    pm.response.to.have.status(201);",
+							"});",
+							"pm.test('Response has details', function() {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('details');",
+							"    pm.expect(jsonData.details.length).to.be.above(1);",
+							"    console.log('Detalles:', jsonData.details.length);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"source\": \"clientes\",\n    \"received_by_user_id\": 1,\n    \"notes\": \"Cilindros de múltiples clientes\",\n    \"details\": [\n        {\n            \"cylinder_type_id\": 1,\n            \"quantity\": 20\n        },\n        {\n            \"cylinder_type_id\": 2,\n            \"quantity\": 15\n        }\n    ]\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -89,7 +171,7 @@
 			}
 		},
 		{
-			"name": "4. Registrar Embasado",
+			"name": "4. Registrar Embasado (Un solo tipo)",
 			"event": [
 				{
 					"listen": "test",
@@ -100,8 +182,8 @@
 							"});",
 							"pm.test('kg_used is calculated', function() {",
 							"    var jsonData = pm.response.json();",
-							"    pm.expect(jsonData).to.have.property('kg_used');",
-							"    console.log('Kg used:', jsonData.kg_used);",
+							"    pm.expect(jsonData).to.have.property('details');",
+							"    console.log('Kg used:', jsonData.details[0].kg_used);",
 							"});"
 						],
 						"type": "text/javascript"
@@ -113,7 +195,50 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"cylinder_type_id\": 1,\n    \"quantity\": 30,\n    \"performed_by_user_id\": 1,\n    \"notes\": \"Llenado normal\"\n}",
+					"raw": "{\n    \"performed_by_user_id\": 1,\n    \"notes\": \"Llenado normal\",\n    \"details\": [\n        {\n            \"cylinder_type_id\": 1,\n            \"quantity\": 30\n        }\n    ]\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/filling",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "filling"]
+				}
+			}
+		},
+		{
+			"name": "4b. Registrar Embasado (Múltiples tipos)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200 or 201', function() {",
+							"    pm.response.to.have.status(201);",
+							"});",
+							"pm.test('Multiple types processed', function() {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('details');",
+							"    pm.expect(jsonData.details.length).to.be.above(1);",
+							"    console.log('Detalles:', jsonData.details.length);",
+							"    jsonData.details.forEach(function(d) {",
+							"        console.log('  - Tipo', d.cylinder_type_id + ':', d.quantity, 'cilindros,', d.kg_used, 'kg');",
+							"    });",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"performed_by_user_id\": 1,\n    \"notes\": \"Llenado de múltiples tipos - turno mañana\",\n    \"details\": [\n        {\n            \"cylinder_type_id\": 1,\n            \"quantity\": 10\n        },\n        {\n            \"cylinder_type_id\": 2,\n            \"quantity\": 5\n        }\n    ]\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -152,7 +277,7 @@
 			}
 		},
 		{
-			"name": "7. Registrar Salida de Cilindros Llenos",
+			"name": "7. Registrar Salida (Un solo tipo)",
 			"event": [
 				{
 					"listen": "test",
@@ -171,7 +296,46 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"cylinder_type_id\": 1,\n    \"quantity\": 20,\n    \"destination\": \"venta\",\n    \"delivered_by_user_id\": 3,\n    \"transported_by_user_id\": 2,\n    \"notes\": \"Envío a punto de venta\"\n}",
+					"raw": "{\n    \"destination\": \"venta\",\n    \"delivered_by_user_id\": 3,\n    \"transported_by_user_id\": 2,\n    \"notes\": \"Envío a punto de venta\",\n    \"details\": [\n        {\n            \"cylinder_type_id\": 1,\n            \"quantity\": 20\n        }\n    ]\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/outputs",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "outputs"]
+				}
+			}
+		},
+		{
+			"name": "7b. Registrar Salida (Múltiples tipos)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200 or 201', function() {",
+							"    pm.response.to.have.status(201);",
+							"});",
+							"pm.test('Multiple types processed', function() {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData.details.length).to.be.above(1);",
+							"    console.log('Detalles:', jsonData.details.length);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"destination\": \"venta\",\n    \"delivered_by_user_id\": 3,\n    \"notes\": \"Envío mixto a punto de venta\",\n    \"details\": [\n        {\n            \"cylinder_type_id\": 1,\n            \"quantity\": 10\n        },\n        {\n            \"cylinder_type_id\": 2,\n            \"quantity\": 8\n        }\n    ]\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -268,7 +432,7 @@
 			}
 		},
 		{
-			"name": "13. Inventario de Operaciones (CLAVE)",
+			"name": "13. Inventario de Operaciones",
 			"event": [
 				{
 					"listen": "test",
@@ -303,44 +467,15 @@
 			}
 		},
 		{
-			"name": "14. Autenticación (Obtener Token)",
-			"event": [
-				{
-					"listen": "test",
-					"script": {
-						"exec": [
-							"var jsonData = pm.response.json();",
-							"if (jsonData.access_token) {",
-							"    pm.collectionVariables.set('token', jsonData.access_token);",
-							"    console.log('Token set:', jsonData.access_token.substring(0, 20) + '...');",
-							"}"
-						],
-						"type": "text/javascript"
-					}
-				}
-			],
+			"name": "14. Obtener Tipos de Cilindros",
+			"description": "Necesario para obtener IDs de tipos de cilindro",
 			"request": {
-				"method": "POST",
+				"method": "GET",
 				"header": [],
-				"body": {
-					"mode": "urlencoded",
-					"urlencoded": [
-						{
-							"key": "username",
-							"value": "admin@codgas.com",
-							"type": "text"
-						},
-						{
-							"key": "password",
-							"value": "admin123",
-							"type": "text"
-						}
-					]
-				},
 				"url": {
-					"raw": "{{baseUrl}}/auth/token",
+					"raw": "{{baseUrl}}/api/tank-types",
 					"host": ["{{baseUrl}}"],
-					"path": ["auth", "token"]
+					"path": ["api", "tank-types"]
 				}
 			}
 		}

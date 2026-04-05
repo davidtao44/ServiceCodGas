@@ -173,61 +173,97 @@ class AssignDebtRequest(BaseModel):
 class PayDebtRequest(BaseModel):
     pass
 
-class EmptyCylinderMovementBase(BaseModel):
+class EmptyCylinderMovementDetailBase(BaseModel):
     cylinder_type_id: int
     quantity: int
+
+class EmptyCylinderMovementDetailCreate(EmptyCylinderMovementDetailBase):
+    pass
+
+class EmptyCylinderMovementDetail(EmptyCylinderMovementDetailBase):
+    id: int
+    cylinder_type: TankType
+    
+    class Config:
+        from_attributes = True
+
+class EmptyCylinderMovementBase(BaseModel):
     source: str
     received_by_user_id: int
     delivered_by_user_id: Optional[int] = None
     notes: Optional[str] = None
 
 class EmptyCylinderMovementCreate(EmptyCylinderMovementBase):
-    pass
+    details: List[EmptyCylinderMovementDetailCreate]
 
 class EmptyCylinderMovement(EmptyCylinderMovementBase):
     id: int
     date: datetime
-    cylinder_type: TankType
+    details: List[EmptyCylinderMovementDetail]
     received_by: User
     delivered_by: Optional[User] = None
     
     class Config:
         from_attributes = True
 
-class FillingOperationBase(BaseModel):
+class FillingOperationDetailBase(BaseModel):
     cylinder_type_id: int
     quantity: int
+
+class FillingOperationDetailCreate(FillingOperationDetailBase):
+    pass
+
+class FillingOperationDetail(FillingOperationDetailBase):
+    id: int
+    kg_used: float
+    cylinder_type: TankType
+    
+    class Config:
+        from_attributes = True
+
+class FillingOperationBase(BaseModel):
     performed_by_user_id: int
     notes: Optional[str] = None
 
 class FillingOperationCreate(FillingOperationBase):
-    pass
+    details: List[FillingOperationDetailCreate]
 
 class FillingOperation(FillingOperationBase):
     id: int
-    kg_used: float
     date: datetime
-    cylinder_type: TankType
+    details: List[FillingOperationDetail]
     performed_by: User
     
     class Config:
         from_attributes = True
 
-class FullCylinderOutputBase(BaseModel):
+class FullCylinderOutputDetailBase(BaseModel):
     cylinder_type_id: int
     quantity: int
+
+class FullCylinderOutputDetailCreate(FullCylinderOutputDetailBase):
+    pass
+
+class FullCylinderOutputDetail(FullCylinderOutputDetailBase):
+    id: int
+    cylinder_type: TankType
+    
+    class Config:
+        from_attributes = True
+
+class FullCylinderOutputBase(BaseModel):
     destination: str
     delivered_by_user_id: int
     transported_by_user_id: Optional[int] = None
     notes: Optional[str] = None
 
 class FullCylinderOutputCreate(FullCylinderOutputBase):
-    pass
+    details: List[FullCylinderOutputDetailCreate]
 
 class FullCylinderOutput(FullCylinderOutputBase):
     id: int
     date: datetime
-    cylinder_type: TankType
+    details: List[FullCylinderOutputDetail]
     delivered_by: User
     transported_by: Optional[User] = None
     
