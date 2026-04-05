@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime
@@ -137,11 +137,16 @@ def get_filling_operations(
         except:
             pass
     
+    query = query.options(
+        joinedload(FillingOperation.details).joinedload(FillingOperationDetail.cylinder_type)
+    )
     query = query.order_by(FillingOperation.date.desc())
     
     items, total, total_pages = paginate_query(query, page, limit)
     
     print(f"[FILLING DEBUG] page={page}, limit={limit}, total={total}")
+    for op in items:
+        print(f"[FILLING DEBUG]   - ID={op.id}, details={len(op.details) if op.details else 0}")
     
     return {
         "data": items,

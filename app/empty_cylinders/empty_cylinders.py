@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime
@@ -92,11 +92,16 @@ def get_empty_cylinder_movements(
         except:
             pass
     
+    query = query.options(
+        joinedload(EmptyCylinderMovement.details).joinedload(EmptyCylinderMovementDetail.cylinder_type)
+    )
     query = query.order_by(EmptyCylinderMovement.date.desc())
     
     items, total, total_pages = paginate_query(query, page, limit)
     
-    print(f"[EMPTY_CYLINDERS DEBUG] page={page}, limit={limit}, total={total}")
+    print(f"[EMPTY_CYLINDERS DEBUG] page={page}, limit={limit}, total={total}, items={len(items)}")
+    for m in items:
+        print(f"[EMPTY_CYLINDERS DEBUG]   - ID={m.id}, details_loaded={len(m.details) if m.details else 'not loaded'}")
     
     return {
         "data": items,

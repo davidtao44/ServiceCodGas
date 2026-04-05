@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime
@@ -115,6 +115,9 @@ def get_full_cylinder_outputs(
         except:
             pass
     
+    query = query.options(
+        joinedload(FullCylinderOutput.details).joinedload(FullCylinderOutputDetail.cylinder_type)
+    )
     query = query.order_by(FullCylinderOutput.date.desc())
     
     items, total, total_pages = paginate_query(query, page, limit)
