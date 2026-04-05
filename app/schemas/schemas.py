@@ -172,3 +172,88 @@ class AssignDebtRequest(BaseModel):
 
 class PayDebtRequest(BaseModel):
     pass
+
+class EmptyCylinderMovementBase(BaseModel):
+    cylinder_type_id: int
+    quantity: int
+    source: str
+    received_by_user_id: int
+    delivered_by_user_id: Optional[int] = None
+    notes: Optional[str] = None
+
+class EmptyCylinderMovementCreate(EmptyCylinderMovementBase):
+    pass
+
+class EmptyCylinderMovement(EmptyCylinderMovementBase):
+    id: int
+    date: datetime
+    cylinder_type: TankType
+    received_by: User
+    delivered_by: Optional[User] = None
+    
+    class Config:
+        from_attributes = True
+
+class FillingOperationBase(BaseModel):
+    cylinder_type_id: int
+    quantity: int
+    performed_by_user_id: int
+    notes: Optional[str] = None
+
+class FillingOperationCreate(FillingOperationBase):
+    pass
+
+class FillingOperation(FillingOperationBase):
+    id: int
+    kg_used: float
+    date: datetime
+    cylinder_type: TankType
+    performed_by: User
+    
+    class Config:
+        from_attributes = True
+
+class FullCylinderOutputBase(BaseModel):
+    cylinder_type_id: int
+    quantity: int
+    destination: str
+    delivered_by_user_id: int
+    transported_by_user_id: Optional[int] = None
+    notes: Optional[str] = None
+
+class FullCylinderOutputCreate(FullCylinderOutputBase):
+    pass
+
+class FullCylinderOutput(FullCylinderOutputBase):
+    id: int
+    date: datetime
+    cylinder_type: TankType
+    delivered_by: User
+    transported_by: Optional[User] = None
+    
+    class Config:
+        from_attributes = True
+
+class GasLoadBase(BaseModel):
+    kg_loaded: float
+    vehicle_plate: Optional[str] = None
+    received_by_user_id: int
+    notes: Optional[str] = None
+
+class GasLoadCreate(GasLoadBase):
+    pass
+
+class GasLoad(GasLoadBase):
+    id: int
+    date: datetime
+    received_by: User
+    
+    class Config:
+        from_attributes = True
+
+class OperationsInventory(BaseModel):
+    empty: int
+    full: int
+    gas: float
+    empty_by_type: List[dict]
+    full_by_type: List[dict]

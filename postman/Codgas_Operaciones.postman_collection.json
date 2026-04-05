@@ -1,0 +1,348 @@
+{
+	"info": {
+		"_postman_id": "codgas-operations",
+		"name": "Codgas - Operaciones",
+		"description": "Colección de endpoints para gestión de operaciones de cilindros de gas",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8000"
+		},
+		{
+			"key": "token",
+			"value": ""
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "1. Crear Cilindros Vacíos",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200 or 201', function() {",
+							"    pm.response.to.have.status(201);",
+							"});",
+							"pm.test('Response has id', function() {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('id');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"cylinder_type_id\": 1,\n    \"quantity\": 50,\n    \"source\": \"clientes\",\n    \"received_by_user_id\": 1,\n    \"delivered_by_user_id\": 2,\n    \"notes\": \"Cilindros回收 de clientes\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/empty-cylinders",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "empty-cylinders"]
+				}
+			}
+		},
+		{
+			"name": "2. Obtener Cilindros Vacíos",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/empty-cylinders",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "empty-cylinders"]
+				}
+			}
+		},
+		{
+			"name": "3. Resumen Vacíos",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/empty-cylinders/summary",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "empty-cylinders", "summary"]
+				}
+			}
+		},
+		{
+			"name": "4. Registrar Embasado",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200 or 201', function() {",
+							"    pm.response.to.have.status(201);",
+							"});",
+							"pm.test('kg_used is calculated', function() {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('kg_used');",
+							"    console.log('Kg used:', jsonData.kg_used);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"cylinder_type_id\": 1,\n    \"quantity\": 30,\n    \"performed_by_user_id\": 1,\n    \"notes\": \"Llenado normal\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/filling",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "filling"]
+				}
+			}
+		},
+		{
+			"name": "5. Obtener Operaciones de Embasado",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/filling",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "filling"]
+				}
+			}
+		},
+		{
+			"name": "6. Resumen Embasado",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/filling/summary",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "filling", "summary"]
+				}
+			}
+		},
+		{
+			"name": "7. Registrar Salida de Cilindros Llenos",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200 or 201', function() {",
+							"    pm.response.to.have.status(201);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"cylinder_type_id\": 1,\n    \"quantity\": 20,\n    \"destination\": \"venta\",\n    \"delivered_by_user_id\": 3,\n    \"transported_by_user_id\": 2,\n    \"notes\": \"Envío a punto de venta\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/outputs",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "outputs"]
+				}
+			}
+		},
+		{
+			"name": "8. Obtener Salidas",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/outputs",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "outputs"]
+				}
+			}
+		},
+		{
+			"name": "9. Resumen Salidas",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/outputs/summary",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "outputs", "summary"]
+				}
+			}
+		},
+		{
+			"name": "10. Registrar Carga de Gas",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200 or 201', function() {",
+							"    pm.response.to.have.status(201);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"kg_loaded\": 800,\n    \"vehicle_plate\": \"ABC123\",\n    \"received_by_user_id\": 1,\n    \"notes\": \"Carga completa de pipa\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/gas-loads",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "gas-loads"]
+				}
+			}
+		},
+		{
+			"name": "11. Obtener Cargas de Gas",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/gas-loads",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "gas-loads"]
+				}
+			}
+		},
+		{
+			"name": "12. Resumen Cargas de Gas",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/gas-loads/summary",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "gas-loads", "summary"]
+				}
+			}
+		},
+		{
+			"name": "13. Inventario de Operaciones (CLAVE)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('Status code is 200', function() {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"pm.test('Response has required fields', function() {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('empty');",
+							"    pm.expect(jsonData).to.have.property('full');",
+							"    pm.expect(jsonData).to.have.property('gas');",
+							"    console.log('Inventario:');",
+							"    console.log('  Vacíos:', jsonData.empty);",
+							"    console.log('  Llenos:', jsonData.full);",
+							"    console.log('  Gas:', jsonData.gas, 'kg');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/inventory",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "inventory"]
+				}
+			}
+		},
+		{
+			"name": "14. Autenticación (Obtener Token)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var jsonData = pm.response.json();",
+							"if (jsonData.access_token) {",
+							"    pm.collectionVariables.set('token', jsonData.access_token);",
+							"    console.log('Token set:', jsonData.access_token.substring(0, 20) + '...');",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": [
+						{
+							"key": "username",
+							"value": "admin@codgas.com",
+							"type": "text"
+						},
+						{
+							"key": "password",
+							"value": "admin123",
+							"type": "text"
+						}
+					]
+				},
+				"url": {
+					"raw": "{{baseUrl}}/auth/token",
+					"host": ["{{baseUrl}}"],
+					"path": ["auth", "token"]
+				}
+			}
+		}
+	]
+}
