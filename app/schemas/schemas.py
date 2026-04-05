@@ -293,3 +293,10 @@ class OperationsInventory(BaseModel):
     gas: float
     empty_by_type: List[dict]
     full_by_type: List[dict]
+
+class PaginatedResponse(BaseModel):
+    data: List[dict]
+    total: int
+    page: int
+    limit: int
+    total_pages: int

@@ -1,13 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List
+from typing import List, Optional
+from datetime import datetime
 from app.core.database.database import get_db
 from app.models.models import FillingOperation, FillingOperationDetail, TankType, User, EmptyCylinderMovement, EmptyCylinderMovementDetail, GasLoad
 from app.schemas.schemas import FillingOperation as FillingOperationSchema, FillingOperationCreate
 from app.auth.auth import get_current_active_user
 
 router = APIRouter()
+
+def paginate_query(query, page: int = 1, limit: int = 10):
+    offset = (page - 1) * limit
+    total = query.count()
+    total_pages = (total + limit - 1) // limit if limit > 0 else 0
+    items = query.offset(offset).limit(limit).all()
+    return items, total, total_pages
 
 @router.post("/filling", response_model=FillingOperationSchema)
 def create_filling_operation(
@@ -95,10 +103,14 @@ def create_filling_operation(
     
     return db_operation
 
-@router.get("/filling", response_model=List[FillingOperationSchema])
+@router.get("/filling")
 def get_filling_operations(
     cylinder_type_id: int = None,
     performed_by_user_id: int = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -111,12 +123,33 @@ def get_filling_operations(
     if performed_by_user_id:
         query = query.filter(FillingOperation.performed_by_user_id == performed_by_user_id)
     
-    results = query.order_by(FillingOperation.date.desc()).all()
-    print(f"[FILLING DEBUG] GET /filling - Total operaciones encontradas: {len(results)}")
-    for op in results[:3]:
-        print(f"[FILLING DEBUG]   - ID={op.id}, fecha={op.date}, detalles={len(op.details)}")
+    if start_date:
+        try:
+            start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            query = query.filter(FillingOperation.date >= start)
+        except:
+            pass
     
-    return results
+    if end_date:
+        try:
+            end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            query = query.filter(FillingOperation.date <= end)
+        except:
+            pass
+    
+    query = query.order_by(FillingOperation.date.desc())
+    
+    items, total, total_pages = paginate_query(query, page, limit)
+    
+    print(f"[FILLING DEBUG] page={page}, limit={limit}, total={total}")
+    
+    return {
+        "data": items,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages
+    }
 
 @router.get("/filling/summary")
 def get_filling_summary(

@@ -1,13 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List
+from typing import List, Optional
+from datetime import datetime
 from app.core.database.database import get_db
 from app.models.models import EmptyCylinderMovement, EmptyCylinderMovementDetail, TankType, User
-from app.schemas.schemas import EmptyCylinderMovement as EmptyCylinderMovementSchema, EmptyCylinderMovementCreate
+from app.schemas.schemas import EmptyCylinderMovement as EmptyCylinderMovementSchema, EmptyCylinderMovementCreate, PaginatedResponse
 from app.auth.auth import get_current_active_user
 
 router = APIRouter()
+
+def paginate_query(query, page: int = 1, limit: int = 10):
+    offset = (page - 1) * limit
+    total = query.count()
+    total_pages = (total + limit - 1) // limit if limit > 0 else 0
+    items = query.offset(offset).limit(limit).all()
+    return items, total, total_pages
 
 @router.post("/empty-cylinders", response_model=EmptyCylinderMovementSchema)
 def create_empty_cylinder_movement(
@@ -50,10 +58,14 @@ def create_empty_cylinder_movement(
     
     return db_movement
 
-@router.get("/empty-cylinders", response_model=List[EmptyCylinderMovementSchema])
+@router.get("/empty-cylinders")
 def get_empty_cylinder_movements(
     cylinder_type_id: int = None,
     source: str = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -66,12 +78,33 @@ def get_empty_cylinder_movements(
     if source:
         query = query.filter(EmptyCylinderMovement.source == source)
     
-    results = query.order_by(EmptyCylinderMovement.date.desc()).all()
-    print(f"[EMPTY_CYLINDERS DEBUG] GET /empty-cylinders - Total movimientos: {len(results)}")
-    for m in results[:3]:
-        print(f"[EMPTY_CYLINDERS DEBUG]   - ID={m.id}, fuente={m.source}, detalles={len(m.details)}")
+    if start_date:
+        try:
+            start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            query = query.filter(EmptyCylinderMovement.date >= start)
+        except:
+            pass
     
-    return results
+    if end_date:
+        try:
+            end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            query = query.filter(EmptyCylinderMovement.date <= end)
+        except:
+            pass
+    
+    query = query.order_by(EmptyCylinderMovement.date.desc())
+    
+    items, total, total_pages = paginate_query(query, page, limit)
+    
+    print(f"[EMPTY_CYLINDERS DEBUG] page={page}, limit={limit}, total={total}")
+    
+    return {
+        "data": items,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages
+    }
 
 @router.get("/empty-cylinders/summary")
 def get_empty_cylinders_summary(

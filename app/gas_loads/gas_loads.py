@@ -1,13 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List
+from typing import List, Optional
+from datetime import datetime
 from app.core.database.database import get_db
 from app.models.models import GasLoad, User
 from app.schemas.schemas import GasLoad as GasLoadSchema, GasLoadCreate
 from app.auth.auth import get_current_active_user
 
 router = APIRouter()
+
+def paginate_query(query, page: int = 1, limit: int = 10):
+    offset = (page - 1) * limit
+    total = query.count()
+    total_pages = (total + limit - 1) // limit if limit > 0 else 0
+    items = query.offset(offset).limit(limit).all()
+    return items, total, total_pages
 
 @router.post("/gas-loads", response_model=GasLoadSchema)
 def create_gas_load(
@@ -33,9 +41,13 @@ def create_gas_load(
     
     return db_gas_load
 
-@router.get("/gas-loads", response_model=List[GasLoadSchema])
+@router.get("/gas-loads")
 def get_gas_loads(
     received_by_user_id: int = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -44,12 +56,35 @@ def get_gas_loads(
     if received_by_user_id:
         query = query.filter(GasLoad.received_by_user_id == received_by_user_id)
     
-    results = query.order_by(GasLoad.date.desc()).all()
-    print(f"[GAS_LOADS DEBUG] GET /gas-loads - Total cargas encontradas: {len(results)}")
-    for g in results[:3]:
+    if start_date:
+        try:
+            start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            query = query.filter(GasLoad.date >= start)
+        except:
+            pass
+    
+    if end_date:
+        try:
+            end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            query = query.filter(GasLoad.date <= end)
+        except:
+            pass
+    
+    query = query.order_by(GasLoad.date.desc())
+    
+    items, total, total_pages = paginate_query(query, page, limit)
+    
+    print(f"[GAS_LOADS DEBUG] page={page}, limit={limit}, total={total}")
+    for g in items[:3]:
         print(f"[GAS_LOADS DEBUG]   - ID={g.id}, kg={g.kg_loaded}, fecha={g.date}")
     
-    return results
+    return {
+        "data": items,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages
+    }
 
 @router.get("/gas-loads/summary")
 def get_gas_loads_summary(
