@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.core.database.database import engine
-from app.models.models import Base
+from contextlib import asynccontextmanager
+from app.core.database.database import engine, Base, check_connection
+from app.models.models import User
 from app.auth.auth import router as auth_router
 from app.users.users import router as users_router
 from app.tank_types.tank_types import router as tank_types_router
@@ -17,12 +18,28 @@ from app.outputs.outputs import router as outputs_router
 from app.gas_loads.gas_loads import router as gas_loads_router
 from app.operations.operations import router as operations_router
 
-Base.metadata.create_all(bind=engine)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manejo del ciclo de vida de la aplicación."""
+    # Startup
+    Base.metadata.create_all(bind=engine)
+    if check_connection():
+        print("✓ Conexión a PostgreSQL establecida")
+    else:
+        print("✗ Error al conectar con PostgreSQL")
+    
+    yield
+    # Shutdown
+    engine.dispose()
+    print("✓ Conexiones cerradas")
+
 
 app = FastAPI(
     title="Codgas - Sistema de Gestión de Cilindros de Gas",
     description="API para gestionar inventario, envasado, ventas y jornadas",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 origins = [
