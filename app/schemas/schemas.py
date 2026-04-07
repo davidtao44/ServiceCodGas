@@ -1,7 +1,7 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime
-from app.models.models import UserRole, JornadaShift, JornadaStatus, DebtStatus
+from app.models.models import UserRole, JornadaShift, JornadaStatus, DebtStatus, GasMovementStatus
 
 class UserBase(BaseModel):
     email: EmailStr
@@ -300,3 +300,62 @@ class PaginatedResponse(BaseModel):
     page: int
     limit: int
     total_pages: int
+
+class LocationBase(BaseModel):
+    name: str
+    max_capacity_kg: float
+
+class LocationCreate(LocationBase):
+    pass
+
+class Location(LocationBase):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+class LocationInventory(BaseModel):
+    location_id: int
+    location_name: str
+    stock_kg: float
+    max_capacity_kg: float
+    utilization_percentage: float
+
+class GasMovementBase(BaseModel):
+    from_location_id: Optional[int] = None
+    to_location_id: Optional[int] = None
+    kg: float
+    notes: Optional[str] = None
+
+class GasMovementCreate(GasMovementBase):
+    pass
+
+class GasMovementReceive(BaseModel):
+    kg_arrived: float
+    notes: Optional[str] = None
+
+class GasMovement(GasMovementBase):
+    id: int
+    date: datetime
+    kg_arrived: Optional[float] = None
+    status: GasMovementStatus
+    created_by: int
+    related_movement_id: Optional[int] = None
+    is_initial_adjustment: bool = False
+    from_location: Optional[Location] = None
+    to_location: Optional[Location] = None
+    
+    class Config:
+        from_attributes = True
+
+class GasMovementWithDifference(GasMovement):
+    difference: Optional[float] = None
+
+class EmbasadoFixResponse(BaseModel):
+    total_consumed_kg: float
+    adjustment_created: bool
+    adjustment_id: Optional[int] = None
+    new_stock: float
+    message: str

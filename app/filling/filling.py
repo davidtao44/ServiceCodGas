@@ -4,7 +4,7 @@ from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime
 from app.core.database.database import get_db
-from app.models.models import FillingOperation, FillingOperationDetail, TankType, User, EmptyCylinderMovement, EmptyCylinderMovementDetail, GasLoad
+from app.models.models import FillingOperation, FillingOperationDetail, TankType, User, EmptyCylinderMovement, EmptyCylinderMovementDetail, GasLoad, Location, GasMovement, GasMovementStatus
 from app.schemas.schemas import FillingOperation as FillingOperationSchema, FillingOperationCreate
 from app.auth.auth import get_current_active_user
 
@@ -16,6 +16,48 @@ def paginate_query(query, page: int = 1, limit: int = 10):
     total_pages = (total + limit - 1) // limit if limit > 0 else 0
     items = query.offset(offset).limit(limit).all()
     return items, total, total_pages
+
+def get_stock_embasado(db: Session) -> float:
+    embasado = db.query(Location).filter(Location.name == "Embasado").first()
+    if not embasado:
+        print("[FILLING] No se encontró ubicación Embasado, usando cálculo legacy")
+        gas_total = db.query(func.coalesce(func.sum(GasLoad.kg_loaded), 0)).scalar() or 0
+        gas_used = db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).scalar() or 0
+        return float(gas_total) - float(gas_used)
+    
+    kg_in = db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+        GasMovement.to_location_id == embasado.id,
+        GasMovement.status == GasMovementStatus.COMPLETADO,
+        GasMovement.is_initial_adjustment == False
+    ).scalar() or 0
+    
+    kg_out = db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+        GasMovement.from_location_id == embasado.id,
+        GasMovement.status == GasMovementStatus.COMPLETADO
+    ).scalar() or 0
+    
+    filling_used = db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).scalar() or 0
+    
+    stock = float(kg_in) - float(kg_out) - float(filling_used)
+    
+    print(f"[FILLING] Stock Embasado: kg_in={kg_in}, kg_out={kg_out}, filling_used={filling_used}, stock={stock}")
+    
+    return stock
+
+@router.get("/inventory/embasado")
+def get_embasado_stock(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    stock = get_stock_embasado(db)
+    embasado = db.query(Location).filter(Location.name == "Embasado").first()
+    max_capacity = embasado.max_capacity_kg if embasado else 0
+    
+    return {
+        "stock_kg": round(stock, 2),
+        "max_capacity_kg": max_capacity,
+        "utilization_percentage": round((stock / max_capacity * 100) if max_capacity > 0 else 0, 2)
+    }
 
 @router.post("/filling", response_model=FillingOperationSchema)
 def create_filling_operation(
@@ -48,14 +90,10 @@ def create_filling_operation(
         if detail.quantity > available_empty:
             raise HTTPException(
                 status_code=400,
-                detail=f"No hay suficientescilindros vacíos para tipo {tank_type.name}. Disponibles: {available_empty}, Solicitados: {detail.quantity}"
+                detail=f"No hay suficientes cilindros vacíos para tipo {tank_type.name}. Disponibles: {available_empty}, Solicitados: {detail.quantity}"
             )
     
-    gas_total = db.query(func.coalesce(func.sum(GasLoad.kg_loaded), 0)).scalar()
-    gas_used = db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).join(
-        FillingOperation
-    ).scalar()
-    available_gas = gas_total - (gas_used or 0)
+    stock_embasado = get_stock_embasado(db)
     
     total_kg_needed = 0
     for detail in operation.details:
@@ -63,10 +101,12 @@ def create_filling_operation(
         kg_needed = detail.quantity * tank_type.capacity
         total_kg_needed += kg_needed
     
-    if total_kg_needed > available_gas:
+    print(f"[FILLING] Stock Embasado: {stock_embasado:.2f} kg, Kg requeridos: {total_kg_needed:.2f} kg")
+    
+    if total_kg_needed > stock_embasado:
         raise HTTPException(
             status_code=400,
-            detail=f"No hay suficiente gas. Disponible: {available_gas:.2f} kg, Necesario: {total_kg_needed:.2f} kg"
+            detail=f"No hay suficiente gas en Embasado. Disponible: {stock_embasado:.2f} kg, Necesario: {total_kg_needed:.2f} kg"
         )
     
     db_operation = FillingOperation(

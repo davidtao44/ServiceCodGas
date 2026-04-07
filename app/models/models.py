@@ -34,6 +34,10 @@ class CylinderOutputDestination(str, enum.Enum):
     PLANTA = "planta"
     OTRO = "otro"
 
+class GasMovementStatus(str, enum.Enum):
+    EN_TRANSITO = "en_transito"
+    COMPLETADO = "completado"
+
 class User(Base):
     __tablename__ = "users"
     
@@ -206,3 +210,35 @@ class GasLoad(Base):
     notes = Column(Text, nullable=True)
     
     received_by = relationship("User")
+
+class Location(Base):
+    __tablename__ = "locations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, unique=True)
+    max_capacity_kg = Column(Float, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    movements_from = relationship("GasMovement", foreign_keys="GasMovement.from_location_id", back_populates="from_location")
+    movements_to = relationship("GasMovement", foreign_keys="GasMovement.to_location_id", back_populates="to_location")
+
+class GasMovement(Base):
+    __tablename__ = "gas_movements"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(DateTime(timezone=True), server_default=func.now())
+    from_location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
+    to_location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
+    kg = Column(Float, nullable=False)
+    kg_arrived = Column(Float, nullable=True)
+    status = Column(Enum(GasMovementStatus), default=GasMovementStatus.EN_TRANSITO, nullable=False)
+    notes = Column(Text, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    related_movement_id = Column(Integer, ForeignKey("gas_movements.id"), nullable=True)
+    is_initial_adjustment = Column(Boolean, default=False, nullable=False)
+    
+    from_location = relationship("Location", foreign_keys=[from_location_id], back_populates="movements_from")
+    to_location = relationship("Location", foreign_keys=[to_location_id], back_populates="movements_to")
+    creator = relationship("User")
+    related_movement = relationship("GasMovement", remote_side=[id])
