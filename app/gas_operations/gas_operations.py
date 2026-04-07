@@ -184,40 +184,49 @@ def create_gas_movement(
 def get_gas_movements(
     from_location_id: Optional[int] = None,
     to_location_id: Optional[int] = None,
-    status: Optional[GasMovementStatus] = None,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    status: Optional[str] = None,
+    start_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
     query = db.query(GasMovement)
+    
+    query = query.filter(GasMovement.is_initial_adjustment == False)
     
     if from_location_id:
         query = query.filter(GasMovement.from_location_id == from_location_id)
     if to_location_id:
         query = query.filter(GasMovement.to_location_id == to_location_id)
     if status:
-        query = query.filter(GasMovement.status == status)
+        try:
+            status_enum = GasMovementStatus(status)
+            query = query.filter(GasMovement.status == status_enum)
+        except ValueError:
+            pass
     
     if start_date:
         try:
-            start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            start = datetime.strptime(start_date, '%Y-%m-%d')
             query = query.filter(GasMovement.date >= start)
-        except:
+        except ValueError:
             pass
     
     if end_date:
         try:
-            end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            end = datetime.strptime(end_date, '%Y-%m-%d')
+            end = end.replace(hour=23, minute=59, second=59)
             query = query.filter(GasMovement.date <= end)
-        except:
+        except ValueError:
             pass
     
+    total = query.count()
     query = query.order_by(GasMovement.date.desc())
+    items = query.offset(offset).limit(limit).all()
     
-    items, total, total_pages = paginate_query(query, page, limit)
+    print(f"[GAS_OPS] get_gas_movements: total={total}, limit={limit}, offset={offset}")
     
     result = []
     for item in items:
@@ -230,8 +239,8 @@ def get_gas_movements(
             "date": item.date,
             "from_location_id": item.from_location_id,
             "to_location_id": item.to_location_id,
-            "from_location_name": item.from_location.name if item.from_location else None,
-            "to_location_name": item.to_location.name if item.to_location else None,
+            "from_location_name": item.from_location.name if item.from_location else "Carga externa",
+            "to_location_name": item.to_location.name if item.to_location else "Consumo/Salida",
             "kg": item.kg,
             "kg_arrived": item.kg_arrived,
             "status": item.status.value,
@@ -244,9 +253,9 @@ def get_gas_movements(
     return {
         "data": result,
         "total": total,
-        "page": page,
         "limit": limit,
-        "total_pages": total_pages
+        "offset": offset,
+        "has_more": offset + len(items) < total
     }
 
 @router.get("/gas-movements/in-transit")
