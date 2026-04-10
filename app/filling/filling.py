@@ -8,6 +8,61 @@ from app.models.models import FillingOperation, FillingOperationDetail, TankType
 from app.schemas.schemas import FillingOperation as FillingOperationSchema, FillingOperationCreate
 from app.auth.auth import get_current_active_user
 
+
+def get_active_batch_id(db: Session) -> Optional[str]:
+    embasado = db.query(Location).filter(Location.name == "Embasado").first()
+    if not embasado:
+        return None
+    
+    latest_movement = db.query(GasMovement).filter(
+        GasMovement.to_location_id == embasado.id,
+        GasMovement.batch_id.isnot(None),
+        GasMovement.is_initial_adjustment == False
+    ).order_by(GasMovement.date.desc()).first()
+    
+    return latest_movement.batch_id if latest_movement else None
+
+
+def get_any_gas_in_embasado(db: Session) -> bool:
+    embasado = db.query(Location).filter(Location.name == "Embasado").first()
+    if not embasado:
+        return False
+    
+    latest_movement = db.query(GasMovement).filter(
+        GasMovement.to_location_id == embasado.id,
+        GasMovement.is_initial_adjustment == False
+    ).order_by(GasMovement.date.desc()).first()
+    
+    return latest_movement is not None
+
+
+def get_total_remaining_kg_in_batches(db: Session) -> float:
+    embasado = db.query(Location).filter(Location.name == "Embasado").first()
+    if not embasado:
+        return 0.0
+    
+    kg_sent_total = db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+        GasMovement.to_location_id == embasado.id,
+        GasMovement.is_initial_adjustment == False
+    ).scalar() or 0
+    
+    kg_used_total = db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).scalar() or 0
+    
+    return float(kg_sent_total) - float(kg_used_total)
+
+
+def get_batch_remaining_kg(db: Session, batch_id: str) -> float:
+    kg_sent = db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+        GasMovement.batch_id == batch_id,
+        GasMovement.is_initial_adjustment == False
+    ).scalar() or 0
+    
+    kg_used = db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).filter(
+        FillingOperationDetail.batch_id == batch_id
+    ).scalar() or 0
+    
+    return float(kg_sent) - float(kg_used)
+
 router = APIRouter()
 
 def paginate_query(query, page: int = 1, limit: int = 10):
@@ -18,45 +73,114 @@ def paginate_query(query, page: int = 1, limit: int = 10):
     return items, total, total_pages
 
 def get_stock_embasado(db: Session) -> float:
+    stock_data = get_stock_embasado_detailed(db)
+    return stock_data["stock_visible"]
+
+
+def get_stock_embasado_detailed(db: Session) -> dict:
     embasado = db.query(Location).filter(Location.name == "Embasado").first()
     if not embasado:
-        print("[FILLING] No se encontró ubicación Embasado, usando cálculo legacy")
         gas_total = db.query(func.coalesce(func.sum(GasLoad.kg_loaded), 0)).scalar() or 0
         gas_used = db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).scalar() or 0
-        return float(gas_total) - float(gas_used)
+        stock_calculado = float(gas_total) - float(gas_used)
+        return {
+            "stock_calculado": stock_calculado,
+            "stock_visible": max(stock_calculado, 0),
+            "rendimiento": abs(min(stock_calculado, 0)),
+            "kg_in": float(gas_total),
+            "kg_out": 0,
+            "kg_used": float(gas_used)
+        }
     
-    kg_in = db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+    latest_movement = db.query(GasMovement).filter(
         GasMovement.to_location_id == embasado.id,
         GasMovement.status == GasMovementStatus.COMPLETADO,
         GasMovement.is_initial_adjustment == False
-    ).scalar() or 0
+    ).order_by(GasMovement.date.desc()).first()
     
-    kg_out = db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+    active_batch_id = latest_movement.batch_id if latest_movement else None
+    
+    kg_in_total = float(db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+        GasMovement.to_location_id == embasado.id,
+        GasMovement.status == GasMovementStatus.COMPLETADO,
+        GasMovement.is_initial_adjustment == False
+    ).scalar() or 0)
+    
+    kg_in_active = 0.0
+    if active_batch_id:
+        kg_in_active = float(db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+            GasMovement.batch_id == active_batch_id,
+            GasMovement.is_initial_adjustment == False
+        ).scalar() or 0)
+    
+    kg_used_active = 0.0
+    if active_batch_id:
+        kg_used_active = float(db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).filter(
+            FillingOperationDetail.batch_id == active_batch_id
+        ).scalar() or 0)
+    
+    kg_used_total = float(db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).scalar() or 0)
+    
+    kg_out = float(db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
         GasMovement.from_location_id == embasado.id,
         GasMovement.status == GasMovementStatus.COMPLETADO
-    ).scalar() or 0
+    ).scalar() or 0)
     
-    filling_used = db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).scalar() or 0
+    stock_calculado = kg_in_active - kg_out - kg_used_active
+    stock_visible = max(stock_calculado, 0)
+    rendimiento = abs(min(stock_calculado, 0))
     
-    stock = float(kg_in) - float(kg_out) - float(filling_used)
+    return {
+        "stock_calculado": stock_calculado,
+        "stock_visible": stock_visible,
+        "rendimiento": rendimiento,
+        "kg_in": kg_in_active,
+        "kg_out": kg_out,
+        "kg_used": kg_used_active,
+        "kg_in_total": kg_in_total,
+        "kg_used_total": kg_used_total,
+        "active_batch_id": active_batch_id
+    }
+
+
+def get_batch_rendimiento(db: Session, batch_id: str) -> dict:
+    kg_sent = float(db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+        GasMovement.batch_id == batch_id,
+        GasMovement.is_initial_adjustment == False
+    ).scalar() or 0)
     
-    print(f"[FILLING] Stock Embasado: kg_in={kg_in}, kg_out={kg_out}, filling_used={filling_used}, stock={stock}")
+    kg_used = float(db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).filter(
+        FillingOperationDetail.batch_id == batch_id
+    ).scalar() or 0)
     
-    return stock
+    rendimiento = max(0, kg_used - kg_sent)
+    remaining = kg_sent - kg_used
+    
+    return {
+        "batch_id": batch_id,
+        "kg_enviados": kg_sent,
+        "kg_usados": kg_used,
+        "diferencia": remaining,
+        "rendimiento": rendimiento
+    }
 
 @router.get("/inventory/embasado")
 def get_embasado_stock(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    stock = get_stock_embasado(db)
+    stock_data = get_stock_embasado_detailed(db)
     embasado = db.query(Location).filter(Location.name == "Embasado").first()
     max_capacity = embasado.max_capacity_kg if embasado else 0
     
     return {
-        "stock_kg": round(stock, 2),
+        "stock_kg": round(stock_data["stock_visible"], 2),
+        "stock_calculado": round(stock_data["stock_calculado"], 2),
         "max_capacity_kg": max_capacity,
-        "utilization_percentage": round((stock / max_capacity * 100) if max_capacity > 0 else 0, 2)
+        "utilization_percentage": round((stock_data["stock_visible"] / max_capacity * 100) if max_capacity > 0 else 0, 2),
+        "rendimiento": round(stock_data["rendimiento"], 2),
+        "kg_in": round(stock_data["kg_in"], 2),
+        "kg_used": round(stock_data["kg_used"], 2)
     }
 
 @router.post("/filling", response_model=FillingOperationSchema)
@@ -93,7 +217,9 @@ def create_filling_operation(
                 detail=f"No hay suficientes cilindros vacíos para tipo {tank_type.name}. Disponibles: {available_empty}, Solicitados: {detail.quantity}"
             )
     
-    stock_embasado = get_stock_embasado(db)
+    stock_data = get_stock_embasado_detailed(db)
+    active_batch_id = get_active_batch_id(db)
+    has_gas_in_embasado = get_any_gas_in_embasado(db)
     
     total_kg_needed = 0
     for detail in operation.details:
@@ -101,13 +227,16 @@ def create_filling_operation(
         kg_needed = detail.quantity * tank_type.capacity
         total_kg_needed += kg_needed
     
-    print(f"[FILLING] Stock Embasado: {stock_embasado:.2f} kg, Kg requeridos: {total_kg_needed:.2f} kg")
+    print(f"[FILLING] Stock visible: {stock_data['stock_visible']:.2f} kg, Stock real: {stock_data['stock_calculado']:.2f} kg, Kg requeridos: {total_kg_needed:.2f} kg, Batch activo: {active_batch_id}")
     
-    if total_kg_needed > stock_embasado:
-        raise HTTPException(
-            status_code=400,
-            detail=f"No hay suficiente gas en Embasado. Disponible: {stock_embasado:.2f} kg, Necesario: {total_kg_needed:.2f} kg"
-        )
+    if has_gas_in_embasado:
+        print(f"[FILLING] PERMITIENDO embasado (hay batch activo - rendimiento permitido)")
+    else:
+        if total_kg_needed > stock_data['stock_visible']:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No hay suficiente gas en Embasado. Disponible: {stock_data['stock_visible']:.2f} kg, Necesario: {total_kg_needed:.2f} kg"
+            )
     
     db_operation = FillingOperation(
         performed_by_user_id=operation.performed_by_user_id,
@@ -125,21 +254,22 @@ def create_filling_operation(
             operation_id=db_operation.id,
             cylinder_type_id=detail.cylinder_type_id,
             quantity=detail.quantity,
-            kg_used=kg_used
+            kg_used=kg_used,
+            batch_id=active_batch_id
         )
         db.add(db_detail)
     
     db.commit()
     db.refresh(db_operation)
     
-    print(f"[FILLING DEBUG] Operación creada ID: {db_operation.id}")
+    print(f"[FILLING DEBUG] Operación creada ID: {db_operation.id}, Batch: {active_batch_id}")
     print(f"[FILLING DEBUG] Detalles guardados: {len(db_operation.details)}")
     for d in db_operation.details:
-        print(f"[FILLING DEBUG]   - tipo={d.cylinder_type_id}, cantidad={d.quantity}, kg={d.kg_used}")
+        print(f"[FILLING DEBUG]   - tipo={d.cylinder_type_id}, cantidad={d.quantity}, kg={d.kg_used}, batch={d.batch_id}")
     
     total_qty = sum(d.quantity for d in operation.details)
     total_kg = sum(d.quantity * db.query(TankType).filter(TankType.id == d.cylinder_type_id).first().capacity for d in operation.details)
-    print(f"[FILLING] Usuario {current_user.email} embasó {total_qty} cilindros, {total_kg:.2f} kg gas usado")
+    print(f"[FILLING] Usuario {current_user.email} embasó {total_qty} cilindros, {total_kg:.2f} kg gas usado (batch: {active_batch_id})")
     
     return db_operation
 

@@ -13,26 +13,34 @@ def calculate_gas_available(db: Session) -> float:
     if not embasado:
         gas_total = db.query(func.coalesce(func.sum(GasLoad.kg_loaded), 0)).scalar() or 0
         gas_used = db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).scalar() or 0
-        return float(gas_total) - float(gas_used)
+        return max(float(gas_total) - float(gas_used), 0)
     
-    kg_in = db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+    latest_movement = db.query(GasMovement).filter(
         GasMovement.to_location_id == embasado.id,
         GasMovement.status == GasMovementStatus.COMPLETADO,
         GasMovement.is_initial_adjustment == False
+    ).order_by(GasMovement.date.desc()).first()
+    
+    active_batch_id = latest_movement.batch_id if latest_movement else None
+    
+    if not active_batch_id:
+        return 0.0
+    
+    kg_in = db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+        GasMovement.batch_id == active_batch_id,
+        GasMovement.is_initial_adjustment == False
     ).scalar() or 0
     
-    kg_out = db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
-        GasMovement.from_location_id == embasado.id,
-        GasMovement.status == GasMovementStatus.COMPLETADO
+    kg_used = db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).filter(
+        FillingOperationDetail.batch_id == active_batch_id
     ).scalar() or 0
     
-    filling_used = db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).scalar() or 0
+    stock = float(kg_in) - float(kg_used)
+    stock_visible = max(stock, 0)
     
-    stock = float(kg_in) - float(kg_out) - float(filling_used)
+    print(f"[INVENTORY] Embasado batch {active_batch_id}: kg_in={kg_in}, kg_used={kg_used}, stock={stock_visible}")
     
-    print(f"[INVENTORY] Embasado: kg_in={kg_in}, kg_out={kg_out}, filling_used={filling_used}, stock={stock}")
-    
-    return stock
+    return stock_visible
 
 @router.get("/inventory", response_model=OperationsInventory)
 def get_operations_inventory(

@@ -170,6 +170,7 @@ class FillingOperationDetail(Base):
     cylinder_type_id = Column(Integer, ForeignKey("tank_types.id"), nullable=False)
     quantity = Column(Integer, nullable=False)
     kg_used = Column(Float, nullable=False)
+    batch_id = Column(String(36), nullable=True)
     
     operation = relationship("FillingOperation", back_populates="details")
     cylinder_type = relationship("TankType")
@@ -230,6 +231,10 @@ class GasMovement(Base):
     date = Column(DateTime(timezone=True), server_default=func.now())
     from_location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
     to_location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
+    from_custom = Column(String(255), nullable=True)
+    to_custom = Column(String(255), nullable=True)
+    responsible = Column(String(255), nullable=True)
+    batch_id = Column(String(36), nullable=True)
     kg = Column(Float, nullable=False)
     kg_arrived = Column(Float, nullable=True)
     status = Column(Enum(GasMovementStatus), default=GasMovementStatus.EN_TRANSITO, nullable=False)

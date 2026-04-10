@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, distinct
 from typing import List, Optional
 from datetime import datetime
+import uuid
 from app.core.database.database import get_db
 from app.models.models import Location, GasMovement, GasMovementStatus, User, FillingOperationDetail, GasLoad
 from app.schemas.schemas import (
@@ -14,9 +15,11 @@ from app.schemas.schemas import (
     GasMovementReceive,
     GasMovementWithDifference,
     PaginatedResponse,
-    EmbasadoFixResponse
+    EmbasadoFixResponse,
+    BatchRendimiento
 )
 from app.auth.auth import get_current_active_user
+from app.filling.filling import get_stock_embasado_detailed, get_batch_rendimiento as get_batch_rendimiento_calc
 
 router = APIRouter()
 
@@ -39,22 +42,9 @@ def get_location_stock(db: Session, location_id: int) -> float:
         return 0.0
     
     if location.name == "Embasado":
-        kg_in = db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
-            GasMovement.to_location_id == location_id,
-            GasMovement.status == GasMovementStatus.COMPLETADO,
-            GasMovement.is_initial_adjustment == False
-        ).scalar() or 0
-        
-        kg_out_movements = db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
-            GasMovement.from_location_id == location_id,
-            GasMovement.status == GasMovementStatus.COMPLETADO
-        ).scalar() or 0
-        
-        kg_used_in_filling = db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).scalar() or 0
-        
-        stock = float(kg_in) - float(kg_out_movements) - float(kg_used_in_filling)
-        print(f"[GAS_OPS] Embasado stock: kg_in={kg_in}, kg_out={kg_out_movements}, filling={kg_used_in_filling}, stock={stock}")
-        return stock
+        stock_data = get_stock_embasado_detailed(db)
+        print(f"[GAS_OPS] Embasado stock visible: {stock_data['stock_visible']:.2f} kg, rendimiento: {stock_data['rendimiento']:.2f} kg")
+        return stock_data["stock_visible"]
     else:
         kg_in = db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
             GasMovement.to_location_id == location_id,
@@ -165,9 +155,20 @@ def create_gas_movement(
     else:
         status = GasMovementStatus.COMPLETADO
     
+    embasado_location = db.query(Location).filter(Location.name == "Embasado").first()
+    batch_id = movement.batch_id
+    
+    if movement.to_location_id and embasado_location and movement.to_location_id == embasado_location.id:
+        if not batch_id:
+            batch_id = f"BATCH-{datetime.now().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8]}"
+    
     db_movement = GasMovement(
         from_location_id=movement.from_location_id,
         to_location_id=movement.to_location_id,
+        from_custom=movement.from_custom,
+        to_custom=movement.to_custom,
+        responsible=movement.responsible,
+        batch_id=batch_id,
         kg=movement.kg,
         status=status,
         notes=movement.notes,
@@ -185,6 +186,7 @@ def get_gas_movements(
     from_location_id: Optional[int] = None,
     to_location_id: Optional[int] = None,
     status: Optional[str] = None,
+    batch_id: Optional[str] = None,
     start_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
     end_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
     limit: int = Query(10, ge=1, le=100),
@@ -206,6 +208,8 @@ def get_gas_movements(
             query = query.filter(GasMovement.status == status_enum)
         except ValueError:
             pass
+    if batch_id:
+        query = query.filter(GasMovement.batch_id == batch_id)
     
     if start_date:
         try:
@@ -234,17 +238,24 @@ def get_gas_movements(
         if item.status == GasMovementStatus.COMPLETADO and item.kg_arrived is not None:
             diff = item.kg - item.kg_arrived
         
+        from_display = item.from_custom if item.from_custom else (item.from_location.name if item.from_location else "Carga externa")
+        to_display = item.to_custom if item.to_custom else (item.to_location.name if item.to_location else "Consumo/Salida")
+        
         movement_dict = {
             "id": item.id,
             "date": item.date,
             "from_location_id": item.from_location_id,
             "to_location_id": item.to_location_id,
-            "from_location_name": item.from_location.name if item.from_location else "Carga externa",
-            "to_location_name": item.to_location.name if item.to_location else "Consumo/Salida",
+            "from_custom": item.from_custom,
+            "to_custom": item.to_custom,
+            "from_location_name": from_display,
+            "to_location_name": to_display,
             "kg": item.kg,
             "kg_arrived": item.kg_arrived,
             "status": item.status.value,
             "notes": item.notes,
+            "responsible": item.responsible,
+            "batch_id": item.batch_id,
             "created_by": item.created_by,
             "difference": diff
         }
@@ -271,9 +282,11 @@ def get_in_transit_movements(
         {
             "id": m.id,
             "date": m.date,
-            "from_location_name": m.from_location.name if m.from_location else None,
-            "to_location_name": m.to_location.name if m.to_location else None,
+            "from_location_name": m.from_custom if m.from_custom else (m.from_location.name if m.from_location else None),
+            "to_location_name": m.to_custom if m.to_custom else (m.to_location.name if m.to_location else None),
             "kg": m.kg,
+            "responsible": m.responsible,
+            "batch_id": m.batch_id,
             "notes": m.notes
         }
         for m in movements
@@ -528,4 +541,130 @@ def auto_fix_and_summary(
         "kg_out": round(float(kg_out), 2),
         "filling_used": round(total_consumed, 2),
         "current_stock": round(current_stock, 2)
+    }
+
+@router.get("/gas-operations/batch-rendimiento")
+def get_batch_rendimiento(
+    batch_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    embasado_location = db.query(Location).filter(Location.name == "Embasado").first()
+    if not embasado_location:
+        raise HTTPException(status_code=404, detail="Ubicación Embasado no encontrada")
+    
+    batch_query = db.query(
+        GasMovement.batch_id,
+        func.min(GasMovement.date).label("fecha_primer_movimiento"),
+        func.max(GasMovement.date).label("fecha_ultimo_movimiento"),
+        func.sum(GasMovement.kg).label("kg_enviados"),
+        func.count(GasMovement.id).label("movimientos")
+    ).filter(
+        GasMovement.to_location_id == embasado_location.id,
+        GasMovement.batch_id.isnot(None),
+        GasMovement.is_initial_adjustment == False
+    )
+    
+    if batch_id:
+        batch_query = batch_query.filter(GasMovement.batch_id == batch_id)
+    
+    batch_query = batch_query.group_by(GasMovement.batch_id).order_by(func.min(GasMovement.date).desc())
+    
+    batches = batch_query.all()
+    
+    results = []
+    for batch in batches:
+        kg_enviados = float(batch.kg_enviados) if batch.kg_enviados else 0
+        
+        kg_usados = db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).filter(
+            FillingOperationDetail.batch_id == batch.batch_id
+        ).scalar() or 0
+        kg_usados = float(kg_usados)
+        
+        cilindros_extra_query = db.query(
+            func.sum(FillingOperationDetail.quantity)
+        ).filter(
+            FillingOperationDetail.batch_id == batch.batch_id
+        ).scalar() or 0
+        
+        diferencia = kg_enviados - kg_usados
+        rendimiento = max(0, -diferencia)
+        
+        results.append({
+            "batch_id": batch.batch_id,
+            "kg_enviados": round(kg_enviados, 2),
+            "kg_usados": round(kg_usados, 2),
+            "diferencia": round(diferencia, 2),
+            "rendimiento": round(rendimiento, 2),
+            "cilindros_extra": cilindros_extra_query,
+            "fecha_primer_movimiento": batch.fecha_primer_movimiento,
+            "fecha_ultimo_movimiento": batch.fecha_ultimo_movimiento,
+            "movimientos": batch.movimientos
+        })
+    
+    return results
+
+@router.get("/gas-operations/batch-list")
+def get_batch_list(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    embasado_location = db.query(Location).filter(Location.name == "Embasado").first()
+    if not embasado_location:
+        return []
+    
+    batches = db.query(
+        GasMovement.batch_id,
+        func.min(GasMovement.date).label("first_date"),
+        func.sum(GasMovement.kg).label("total_kg"),
+        func.count(GasMovement.id).label("movement_count")
+    ).filter(
+        GasMovement.to_location_id == embasado_location.id,
+        GasMovement.batch_id.isnot(None),
+        GasMovement.is_initial_adjustment == False
+    ).group_by(GasMovement.batch_id).order_by(func.min(GasMovement.date).desc()).all()
+    
+    return [
+        {
+            "batch_id": b.batch_id,
+            "first_date": b.first_date,
+            "total_kg": round(float(b.total_kg), 2) if b.total_kg else 0,
+            "movement_count": b.movement_count
+        }
+        for b in batches
+    ]
+
+@router.get("/gas-operations/active-batch")
+def get_active_batch(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    embasado_location = db.query(Location).filter(Location.name == "Embasado").first()
+    if not embasado_location:
+        return None
+    
+    latest_movement = db.query(GasMovement).filter(
+        GasMovement.to_location_id == embasado_location.id,
+        GasMovement.batch_id.isnot(None),
+        GasMovement.is_initial_adjustment == False
+    ).order_by(GasMovement.date.desc()).first()
+    
+    if not latest_movement:
+        return None
+    
+    kg_sent = db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+        GasMovement.batch_id == latest_movement.batch_id,
+        GasMovement.is_initial_adjustment == False
+    ).scalar() or 0
+    
+    kg_used = db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).filter(
+        FillingOperationDetail.batch_id == latest_movement.batch_id
+    ).scalar() or 0
+    
+    return {
+        "batch_id": latest_movement.batch_id,
+        "kg_sent": round(float(kg_sent), 2),
+        "kg_used": round(float(kg_used), 2),
+        "remaining": round(float(kg_sent) - float(kg_used), 2),
+        "last_update": latest_movement.date
     }

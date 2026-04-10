@@ -326,6 +326,10 @@ class LocationInventory(BaseModel):
 class GasMovementBase(BaseModel):
     from_location_id: Optional[int] = None
     to_location_id: Optional[int] = None
+    from_custom: Optional[str] = None
+    to_custom: Optional[str] = None
+    responsible: Optional[str] = None
+    batch_id: Optional[str] = None
     kg: float
     notes: Optional[str] = None
 
@@ -359,3 +363,30 @@ class EmbasadoFixResponse(BaseModel):
     adjustment_id: Optional[int] = None
     new_stock: float
     message: str
+
+class BatchRendimiento(BaseModel):
+    batch_id: str
+    kg_enviados: float
+    kg_usados: float
+    diferencia: float
+    cilindros_extra: int
+    fecha_primer_movimiento: datetime
+    fecha_ultimo_movimiento: datetime
+    movimientos: int
+    
+    class Config:
+        from_attributes = True
+
+class FlexibleFillingRequest(BaseModel):
+    tank_type_id: int
+    filled_quantity: int
+    notes: Optional[str] = None
+    force_continue: bool = False
+
+class FlexibleFillingResponse(BaseModel):
+    success: bool
+    message: str
+    cylinders_filled: int
+    kg_used: float
+    remaining_stock: float
+    batch_id: Optional[str] = None
