@@ -200,17 +200,40 @@ class FullCylinderOutputDetail(Base):
     output = relationship("FullCylinderOutput", back_populates="details")
     cylinder_type = relationship("TankType")
 
+class Vehicle(Base):
+    __tablename__ = "vehicles"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    plate = Column(String(50), unique=True, nullable=True)
+    location = Column(String(50), default="embasado")
+    capacity_kg = Column(Float, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Driver(Base):
+    __tablename__ = "drivers"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    document = Column(String(50), nullable=True)
+    phone = Column(String(20), nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
 class GasLoad(Base):
     __tablename__ = "gas_loads"
     
     id = Column(Integer, primary_key=True, index=True)
     kg_loaded = Column(Float, nullable=False)
     vehicle_plate = Column(String, nullable=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=True)
     received_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     date = Column(DateTime(timezone=True), server_default=func.now())
     notes = Column(Text, nullable=True)
     
     received_by = relationship("User")
+    vehicle = relationship("Vehicle")
 
 class Location(Base):
     __tablename__ = "locations"
@@ -235,6 +258,8 @@ class GasMovement(Base):
     to_custom = Column(String(255), nullable=True)
     responsible = Column(String(255), nullable=True)
     batch_id = Column(String(36), nullable=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=True)
+    driver_id = Column(Integer, ForeignKey("drivers.id"), nullable=True)
     kg = Column(Float, nullable=False)
     kg_arrived = Column(Float, nullable=True)
     status = Column(Enum(GasMovementStatus), default=GasMovementStatus.EN_TRANSITO, nullable=False)
@@ -246,4 +271,7 @@ class GasMovement(Base):
     from_location = relationship("Location", foreign_keys=[from_location_id], back_populates="movements_from")
     to_location = relationship("Location", foreign_keys=[to_location_id], back_populates="movements_to")
     creator = relationship("User")
+    vehicle = relationship("Vehicle")
+    driver = relationship("Driver")
     related_movement = relationship("GasMovement", remote_side=[id])
+    vehicle = relationship("Vehicle")

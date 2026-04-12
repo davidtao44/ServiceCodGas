@@ -270,19 +270,54 @@ class FullCylinderOutput(FullCylinderOutputBase):
     class Config:
         from_attributes = True
 
+class VehicleBase(BaseModel):
+    name: str
+    plate: Optional[str] = None
+    location: str = "embasado"
+    capacity_kg: Optional[float] = None
+
+class VehicleCreate(VehicleBase):
+    pass
+
+class Vehicle(VehicleBase):
+    id: int
+    is_active: bool
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class DriverBase(BaseModel):
+    name: str
+    document: Optional[str] = None
+    phone: Optional[str] = None
+
+class DriverCreate(DriverBase):
+    pass
+
+class Driver(DriverBase):
+    id: int
+    is_active: bool
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
 class GasLoadBase(BaseModel):
     kg_loaded: float
     vehicle_plate: Optional[str] = None
+    vehicle_id: Optional[int] = None
     received_by_user_id: int
     notes: Optional[str] = None
 
 class GasLoadCreate(GasLoadBase):
-    pass
+    new_vehicle: Optional[VehicleCreate] = None
 
 class GasLoad(GasLoadBase):
     id: int
     date: datetime
     received_by: User
+    vehicle: Optional[Vehicle] = None
     
     class Config:
         from_attributes = True
@@ -328,13 +363,14 @@ class GasMovementBase(BaseModel):
     to_location_id: Optional[int] = None
     from_custom: Optional[str] = None
     to_custom: Optional[str] = None
-    responsible: Optional[str] = None
     batch_id: Optional[str] = None
+    vehicle_id: Optional[int] = None
+    driver_id: Optional[int] = None
     kg: float
     notes: Optional[str] = None
 
 class GasMovementCreate(GasMovementBase):
-    pass
+    new_driver: Optional[DriverCreate] = None
 
 class GasMovementReceive(BaseModel):
     kg_arrived: float

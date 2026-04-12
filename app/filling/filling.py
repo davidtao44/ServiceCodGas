@@ -82,7 +82,7 @@ def get_stock_embasado_detailed(db: Session) -> dict:
     if not embasado:
         gas_total = db.query(func.coalesce(func.sum(GasLoad.kg_loaded), 0)).scalar() or 0
         gas_used = db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).scalar() or 0
-        stock_calculado = float(gas_total) - float(gas_used)
+        stock_calculado = max(0, float(gas_total) - float(gas_used))
         return {
             "stock_calculado": stock_calculado,
             "stock_visible": max(stock_calculado, 0),
@@ -127,8 +127,8 @@ def get_stock_embasado_detailed(db: Session) -> dict:
     ).scalar() or 0)
     
     stock_calculado = kg_in_active - kg_out - kg_used_active
-    stock_visible = max(stock_calculado, 0)
-    rendimiento = abs(min(stock_calculado, 0))
+    stock_visible = max(0, stock_calculado)
+    rendimiento = max(0, -stock_calculado)
     
     return {
         "stock_calculado": stock_calculado,
@@ -228,15 +228,6 @@ def create_filling_operation(
         total_kg_needed += kg_needed
     
     print(f"[FILLING] Stock visible: {stock_data['stock_visible']:.2f} kg, Stock real: {stock_data['stock_calculado']:.2f} kg, Kg requeridos: {total_kg_needed:.2f} kg, Batch activo: {active_batch_id}")
-    
-    if has_gas_in_embasado:
-        print(f"[FILLING] PERMITIENDO embasado (hay batch activo - rendimiento permitido)")
-    else:
-        if total_kg_needed > stock_data['stock_visible']:
-            raise HTTPException(
-                status_code=400,
-                detail=f"No hay suficiente gas en Embasado. Disponible: {stock_data['stock_visible']:.2f} kg, Necesario: {total_kg_needed:.2f} kg"
-            )
     
     db_operation = FillingOperation(
         performed_by_user_id=operation.performed_by_user_id,

@@ -18,6 +18,8 @@ from app.outputs.outputs import router as outputs_router
 from app.gas_loads.gas_loads import router as gas_loads_router
 from app.operations.operations import router as operations_router
 from app.gas_operations.gas_operations import router as gas_operations_router
+from app.vehicles.vehicles import router as vehicles_router
+from app.drivers.drivers import router as drivers_router
 
 
 @asynccontextmanager
@@ -69,6 +71,8 @@ app.include_router(empty_cylinders_router, prefix="/api", tags=["cilindros-vacio
 app.include_router(filling_router, prefix="/api", tags=["embasado-nuevo"])
 app.include_router(outputs_router, prefix="/api", tags=["salidas"])
 app.include_router(gas_loads_router, prefix="/api", tags=["carga-gas"])
+app.include_router(vehicles_router, prefix="/api", tags=["vehiculos"])
+app.include_router(drivers_router, prefix="/api", tags=["conductores"])
 app.include_router(operations_router, prefix="/api", tags=["operaciones"])
 app.include_router(gas_operations_router, prefix="/api", tags=["operaciones-gas"])
 

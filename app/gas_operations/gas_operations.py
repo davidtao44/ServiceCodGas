@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, distinct
 from typing import List, Optional
 from datetime import datetime
 import uuid
 from app.core.database.database import get_db
-from app.models.models import Location, GasMovement, GasMovementStatus, User, FillingOperationDetail, GasLoad
+from app.models.models import Location, GasMovement, GasMovementStatus, User, FillingOperationDetail, GasLoad, Vehicle, Driver
 from app.schemas.schemas import (
     Location as LocationSchema,
     LocationCreate,
@@ -42,9 +42,40 @@ def get_location_stock(db: Session, location_id: int) -> float:
         return 0.0
     
     if location.name == "Embasado":
-        stock_data = get_stock_embasado_detailed(db)
-        print(f"[GAS_OPS] Embasado stock visible: {stock_data['stock_visible']:.2f} kg, rendimiento: {stock_data['rendimiento']:.2f} kg")
-        return stock_data["stock_visible"]
+        embasado = db.query(Location).filter(Location.name == "Embasado").first()
+        
+        # Obtener el batch activo (último movimiento hacia Embasado)
+        latest_movement = db.query(GasMovement).filter(
+            GasMovement.to_location_id == embasado.id,
+            GasMovement.status == GasMovementStatus.COMPLETADO,
+            GasMovement.is_initial_adjustment == False
+        ).order_by(GasMovement.date.desc()).first()
+        
+        active_batch_id = latest_movement.batch_id if latest_movement else None
+        
+        # kg_in = solo movimientos del batch activo
+        kg_in = 0.0
+        if active_batch_id:
+            kg_in = float(db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+                GasMovement.to_location_id == embasado.id,
+                GasMovement.batch_id == active_batch_id,
+                GasMovement.status == GasMovementStatus.COMPLETADO,
+                GasMovement.is_initial_adjustment == False
+            ).scalar() or 0)
+        
+        # kg_out = movimientos desde Embasado del batch activo
+        kg_out = 0.0
+        if active_batch_id:
+            kg_out = float(db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+                GasMovement.from_location_id == embasado.id,
+                GasMovement.batch_id == active_batch_id,
+                GasMovement.status == GasMovementStatus.COMPLETADO,
+                GasMovement.is_initial_adjustment == False
+            ).scalar() or 0)
+        
+        stock = kg_in - kg_out
+        print(f"[GAS_OPS] Embasado stock: kg_in={kg_in}, kg_out={kg_out}, stock={stock}")
+        return max(0, stock)
     else:
         kg_in = db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
             GasMovement.to_location_id == location_id,
@@ -56,7 +87,7 @@ def get_location_stock(db: Session, location_id: int) -> float:
             GasMovement.status == GasMovementStatus.COMPLETADO
         ).scalar() or 0
         
-        return float(kg_in) - float(kg_out)
+        return max(0, float(kg_in) - float(kg_out))
 
 @router.post("/gas-operations/initialize-locations")
 def initialize_locations(
@@ -145,10 +176,8 @@ def create_gas_movement(
             to_stock = get_location_stock(db, movement.to_location_id)
             new_stock = to_stock + movement.kg
             if new_stock > to_location.max_capacity_kg:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Supera capacidad del destino. Disponible: {to_location.max_capacity_kg - to_stock:.2f} kg"
-                )
+                print(f"[GAS_OPS] Advertencia: Movimiento supera capacidad estimada. Nuevo stock: {new_stock:.2f} kg, Capacidad: {to_location.max_capacity_kg:.2f} kg")
+            print(f"[GAS_OPS] Permitiendo movimiento: {movement.kg:.2f} kg. Stock actual: {to_stock:.2f} kg, Nuevo stock: {new_stock:.2f} kg")
     
     if movement.from_location_id:
         status = GasMovementStatus.EN_TRANSITO
@@ -162,13 +191,22 @@ def create_gas_movement(
         if not batch_id:
             batch_id = f"BATCH-{datetime.now().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8]}"
     
+    driver_id = movement.driver_id
+    if movement.new_driver:
+        new_driver = Driver(**movement.new_driver.model_dump())
+        db.add(new_driver)
+        db.flush()
+        driver_id = new_driver.id
+        print(f"[GAS_OPS] Nuevo conductor creado: {new_driver.name} (ID: {new_driver.id})")
+    
     db_movement = GasMovement(
         from_location_id=movement.from_location_id,
         to_location_id=movement.to_location_id,
         from_custom=movement.from_custom,
         to_custom=movement.to_custom,
-        responsible=movement.responsible,
         batch_id=batch_id,
+        vehicle_id=movement.vehicle_id,
+        driver_id=driver_id,
         kg=movement.kg,
         status=status,
         notes=movement.notes,
@@ -176,6 +214,16 @@ def create_gas_movement(
     )
     
     db.add(db_movement)
+    db.flush()
+    
+    if movement.vehicle_id and movement.to_location_id:
+        vehicle = db.query(Vehicle).filter(Vehicle.id == movement.vehicle_id).first()
+        if vehicle:
+            to_location = db.query(Location).filter(Location.id == movement.to_location_id).first()
+            if to_location:
+                vehicle.location = to_location.name
+                print(f"[GAS_OPS] Vehículo {vehicle.name} actualizado a ubicación: {vehicle.location}")
+    
     db.commit()
     db.refresh(db_movement)
     
@@ -228,7 +276,7 @@ def get_gas_movements(
     
     total = query.count()
     query = query.order_by(GasMovement.date.desc())
-    items = query.offset(offset).limit(limit).all()
+    items = query.options(joinedload(GasMovement.vehicle), joinedload(GasMovement.driver)).offset(offset).limit(limit).all()
     
     print(f"[GAS_OPS] get_gas_movements: total={total}, limit={limit}, offset={offset}")
     
@@ -254,8 +302,12 @@ def get_gas_movements(
             "kg_arrived": item.kg_arrived,
             "status": item.status.value,
             "notes": item.notes,
-            "responsible": item.responsible,
             "batch_id": item.batch_id,
+            "vehicle_id": item.vehicle_id,
+            "vehicle_name": item.vehicle.name if item.vehicle else None,
+            "vehicle_plate": item.vehicle.plate if item.vehicle else None,
+            "driver_id": item.driver_id,
+            "driver_name": item.driver.name if item.driver else None,
             "created_by": item.created_by,
             "difference": diff
         }
@@ -285,7 +337,8 @@ def get_in_transit_movements(
             "from_location_name": m.from_custom if m.from_custom else (m.from_location.name if m.from_location else None),
             "to_location_name": m.to_custom if m.to_custom else (m.to_location.name if m.to_location else None),
             "kg": m.kg,
-            "responsible": m.responsible,
+            "driver_id": m.driver_id,
+            "driver_name": m.driver.name if m.driver else None,
             "batch_id": m.batch_id,
             "notes": m.notes
         }
@@ -319,10 +372,14 @@ def receive_gas_movement(
             to_stock = get_location_stock(db, movement.to_location_id)
             new_stock = to_stock + receive_data.kg_arrived
             if new_stock > to_location.max_capacity_kg:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Supera capacidad del destino. Capacidad disponible: {to_location.max_capacity_kg - to_stock:.2f} kg"
-                )
+                print(f"[GAS_OPS] Advertencia: Recepción supera capacidad estimada. Nuevo stock: {new_stock:.2f} kg, Capacidad: {to_location.max_capacity_kg:.2f} kg")
+            print(f"[GAS_OPS] Permitiendo recepción: {receive_data.kg_arrived:.2f} kg. Stock actual: {to_stock:.2f} kg, Nuevo stock: {new_stock:.2f} kg")
+    
+    if movement.vehicle_id:
+        vehicle = db.query(Vehicle).filter(Vehicle.id == movement.vehicle_id).first()
+        if vehicle and movement.to_location:
+            vehicle.location = movement.to_location.name
+            print(f"[GAS_OPS] Vehículo {vehicle.name} actualizado a ubicación: {vehicle.location}")
     
     db.commit()
     db.refresh(movement)
@@ -413,6 +470,47 @@ def get_embasado_status(
         "total_kg_in": round(kg_in_total, 2),
         "total_kg_out": round(kg_out_total, 2),
         "is_negative": current_stock < 0
+    }
+
+@router.get("/gas-operations/gas-available")
+def get_gas_available(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    embasado = db.query(Location).filter(Location.name == "Embasado").first()
+    if not embasado:
+        return {"gas_available_kg": 0, "batch_id": None, "kg_in": 0, "kg_used": 0}
+    
+    latest_movement = db.query(GasMovement).filter(
+        GasMovement.to_location_id == embasado.id,
+        GasMovement.status == GasMovementStatus.COMPLETADO,
+        GasMovement.is_initial_adjustment == False
+    ).order_by(GasMovement.date.desc()).first()
+    
+    active_batch_id = latest_movement.batch_id if latest_movement else None
+    
+    if not active_batch_id:
+        return {"gas_available_kg": 0, "batch_id": None, "kg_in": 0, "kg_used": 0}
+    
+    kg_in = float(db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+        GasMovement.batch_id == active_batch_id,
+        GasMovement.is_initial_adjustment == False
+    ).scalar() or 0)
+    
+    kg_used = float(db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).filter(
+        FillingOperationDetail.batch_id == active_batch_id
+    ).scalar() or 0)
+    
+    stock = kg_in - kg_used
+    stock_visible = max(stock, 0)
+    
+    print(f"[GAS_OPS] Gas disponible: batch={active_batch_id}, kg_in={kg_in}, kg_used={kg_used}, available={stock_visible}")
+    
+    return {
+        "gas_available_kg": round(stock_visible, 2),
+        "batch_id": active_batch_id,
+        "kg_in": round(kg_in, 2),
+        "kg_used": round(kg_used, 2)
     }
 
 @router.post("/gas-operations/clear-all")
