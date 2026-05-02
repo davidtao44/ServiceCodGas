@@ -262,6 +262,7 @@ class GasMovement(Base):
     driver_id = Column(Integer, ForeignKey("drivers.id"), nullable=True)
     kg = Column(Float, nullable=False)
     kg_arrived = Column(Float, nullable=True)
+    viaticos = Column(Float, nullable=True)
     status = Column(Enum(GasMovementStatus), default=GasMovementStatus.EN_TRANSITO, nullable=False)
     notes = Column(Text, nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -275,3 +276,32 @@ class GasMovement(Base):
     driver = relationship("Driver")
     related_movement = relationship("GasMovement", remote_side=[id])
     vehicle = relationship("Vehicle")
+    expenses = relationship("GasMovementExpense", back_populates="movement", cascade="all, delete-orphan")
+    viaticos_topups = relationship("ViaticosTopup", back_populates="movement", cascade="all, delete-orphan")
+
+
+class GasMovementExpense(Base):
+    __tablename__ = "gas_movement_expenses"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    movement_id = Column(Integer, ForeignKey("gas_movements.id"), nullable=False)
+    tipo = Column(String(50), nullable=False)
+    monto = Column(Float, nullable=False)
+    descripcion = Column(Text, nullable=True)
+    fecha = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    movement = relationship("GasMovement", back_populates="expenses")
+
+
+class ViaticosTopup(Base):
+    __tablename__ = "viaticos_topups"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    movement_id = Column(Integer, ForeignKey("gas_movements.id"), nullable=False)
+    monto = Column(Float, nullable=False)
+    fecha = Column(DateTime(timezone=True), server_default=func.now())
+    descripcion = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    movement = relationship("GasMovement", back_populates="viaticos_topups")

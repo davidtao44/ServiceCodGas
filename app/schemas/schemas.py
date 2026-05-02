@@ -371,6 +371,7 @@ class GasMovementBase(BaseModel):
 
 class GasMovementCreate(GasMovementBase):
     new_driver: Optional[DriverCreate] = None
+    viaticos: Optional[float] = None
 
 class GasMovementReceive(BaseModel):
     kg_arrived: float
@@ -392,6 +393,51 @@ class GasMovement(GasMovementBase):
 
 class GasMovementWithDifference(GasMovement):
     difference: Optional[float] = None
+
+
+class GasMovementExpenseCreate(BaseModel):
+    tipo: str
+    monto: float
+    descripcion: Optional[str] = None
+    fecha: Optional[datetime] = None
+
+
+class GasMovementExpenseResponse(BaseModel):
+    id: int
+    tipo: str
+    monto: float
+    descripcion: Optional[str] = None
+    fecha: datetime
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class ViaticosTopupCreate(BaseModel):
+    monto: float
+    descripcion: Optional[str] = None
+
+
+class ViaticosTopupResponse(BaseModel):
+    id: int
+    movement_id: int
+    monto: float
+    fecha: datetime
+    descripcion: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class GasMovementExpensesSummary(BaseModel):
+    viaticos_inicial: Optional[float] = None
+    viaticos_recargas: float = 0
+    viaticos_totales: float = 0
+    expenses: List[GasMovementExpenseResponse]
+    topups: List[ViaticosTopupResponse] = []
+    total_gastos: float
+    saldo: float
 
 class EmbasadoFixResponse(BaseModel):
     total_consumed_kg: float

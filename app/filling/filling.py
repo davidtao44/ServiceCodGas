@@ -41,7 +41,7 @@ def get_total_remaining_kg_in_batches(db: Session) -> float:
     if not embasado:
         return 0.0
     
-    kg_sent_total = db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+    kg_sent_total = db.query(func.coalesce(func.sum(func.coalesce(GasMovement.kg_arrived, GasMovement.kg)), 0)).filter(
         GasMovement.to_location_id == embasado.id,
         GasMovement.is_initial_adjustment == False
     ).scalar() or 0
@@ -52,7 +52,7 @@ def get_total_remaining_kg_in_batches(db: Session) -> float:
 
 
 def get_batch_remaining_kg(db: Session, batch_id: str) -> float:
-    kg_sent = db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+    kg_sent = db.query(func.coalesce(func.sum(func.coalesce(GasMovement.kg_arrived, GasMovement.kg)), 0)).filter(
         GasMovement.batch_id == batch_id,
         GasMovement.is_initial_adjustment == False
     ).scalar() or 0
@@ -100,7 +100,7 @@ def get_stock_embasado_detailed(db: Session) -> dict:
     
     active_batch_id = latest_movement.batch_id if latest_movement else None
     
-    kg_in_total = float(db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+    kg_in_total = float(db.query(func.coalesce(func.sum(func.coalesce(GasMovement.kg_arrived, GasMovement.kg)), 0)).filter(
         GasMovement.to_location_id == embasado.id,
         GasMovement.status == GasMovementStatus.COMPLETADO,
         GasMovement.is_initial_adjustment == False
@@ -108,7 +108,7 @@ def get_stock_embasado_detailed(db: Session) -> dict:
     
     kg_in_active = 0.0
     if active_batch_id:
-        kg_in_active = float(db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+        kg_in_active = float(db.query(func.coalesce(func.sum(func.coalesce(GasMovement.kg_arrived, GasMovement.kg)), 0)).filter(
             GasMovement.batch_id == active_batch_id,
             GasMovement.is_initial_adjustment == False
         ).scalar() or 0)

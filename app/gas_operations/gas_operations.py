@@ -5,7 +5,7 @@ from typing import List, Optional
 from datetime import datetime
 import uuid
 from app.core.database.database import get_db
-from app.models.models import Location, GasMovement, GasMovementStatus, User, FillingOperationDetail, GasLoad, Vehicle, Driver
+from app.models.models import Location, GasMovement, GasMovementStatus, User, FillingOperationDetail, GasLoad, Vehicle, Driver, GasMovementExpense, ViaticosTopup
 from app.schemas.schemas import (
     Location as LocationSchema,
     LocationCreate,
@@ -16,7 +16,11 @@ from app.schemas.schemas import (
     GasMovementWithDifference,
     PaginatedResponse,
     EmbasadoFixResponse,
-    BatchRendimiento
+    BatchRendimiento,
+    GasMovementExpenseCreate,
+    GasMovementExpensesSummary,
+    ViaticosTopupCreate,
+    ViaticosTopupResponse
 )
 from app.auth.auth import get_current_active_user
 from app.filling.filling import get_stock_embasado_detailed, get_batch_rendimiento as get_batch_rendimiento_calc
@@ -56,7 +60,7 @@ def get_location_stock(db: Session, location_id: int) -> float:
         # kg_in = solo movimientos del batch activo
         kg_in = 0.0
         if active_batch_id:
-            kg_in = float(db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+            kg_in = float(db.query(func.coalesce(func.sum(func.coalesce(GasMovement.kg_arrived, GasMovement.kg)), 0)).filter(
                 GasMovement.to_location_id == embasado.id,
                 GasMovement.batch_id == active_batch_id,
                 GasMovement.status == GasMovementStatus.COMPLETADO,
@@ -77,7 +81,7 @@ def get_location_stock(db: Session, location_id: int) -> float:
         print(f"[GAS_OPS] Embasado stock: kg_in={kg_in}, kg_out={kg_out}, stock={stock}")
         return max(0, stock)
     else:
-        kg_in = db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+        kg_in = db.query(func.coalesce(func.sum(func.coalesce(GasMovement.kg_arrived, GasMovement.kg)), 0)).filter(
             GasMovement.to_location_id == location_id,
             GasMovement.status == GasMovementStatus.COMPLETADO
         ).scalar() or 0
@@ -208,6 +212,7 @@ def create_gas_movement(
         vehicle_id=movement.vehicle_id,
         driver_id=driver_id,
         kg=movement.kg,
+        viaticos=movement.viaticos,
         status=status,
         notes=movement.notes,
         created_by=current_user.id
@@ -276,7 +281,11 @@ def get_gas_movements(
     
     total = query.count()
     query = query.order_by(GasMovement.date.desc())
-    items = query.options(joinedload(GasMovement.vehicle), joinedload(GasMovement.driver)).offset(offset).limit(limit).all()
+    items = query.options(
+        joinedload(GasMovement.vehicle), 
+        joinedload(GasMovement.driver),
+        joinedload(GasMovement.expenses)
+    ).offset(offset).limit(limit).all()
     
     print(f"[GAS_OPS] get_gas_movements: total={total}, limit={limit}, offset={offset}")
     
@@ -289,6 +298,8 @@ def get_gas_movements(
         from_display = item.from_custom if item.from_custom else (item.from_location.name if item.from_location else "Carga externa")
         to_display = item.to_custom if item.to_custom else (item.to_location.name if item.to_location else "Consumo/Salida")
         
+        total_gastos = sum(exp.monto for exp in item.expenses) if item.expenses else 0
+        
         movement_dict = {
             "id": item.id,
             "date": item.date,
@@ -300,6 +311,9 @@ def get_gas_movements(
             "to_location_name": to_display,
             "kg": item.kg,
             "kg_arrived": item.kg_arrived,
+            "viaticos": item.viaticos,
+            "total_gastos": total_gastos,
+            "saldo": (item.viaticos or 0) - total_gastos,
             "status": item.status.value,
             "notes": item.notes,
             "batch_id": item.batch_id,
@@ -389,6 +403,16 @@ def receive_gas_movement(
         print(f"[GAS_OPERATIONS] Pérdida detectada en movimiento {movement_id}: {difference:.2f} kg")
     
     return movement
+
+
+@router.get("/gas-movements/expense-types")
+def get_expense_types(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    types = db.query(GasMovementExpense.tipo).filter(GasMovementExpense.tipo.isnot(None)).distinct().order_by(GasMovementExpense.tipo).all()
+    return {"types": [t[0] for t in types]}
+
 
 @router.get("/gas-movements/{movement_id}")
 def get_movement(
@@ -492,7 +516,7 @@ def get_gas_available(
     if not active_batch_id:
         return {"gas_available_kg": 0, "batch_id": None, "kg_in": 0, "kg_used": 0}
     
-    kg_in = float(db.query(func.coalesce(func.sum(GasMovement.kg), 0)).filter(
+    kg_in = float(db.query(func.coalesce(func.sum(func.coalesce(GasMovement.kg_arrived, GasMovement.kg)), 0)).filter(
         GasMovement.batch_id == active_batch_id,
         GasMovement.is_initial_adjustment == False
     ).scalar() or 0)
@@ -672,7 +696,14 @@ def get_batch_rendimiento(
     
     results = []
     for batch in batches:
-        kg_enviados = float(batch.kg_enviados) if batch.kg_enviados else 0
+        # Usar kg_arrived si existe, sino kg (enviado) como respaldo
+        kg_enviados_query = db.query(
+            func.coalesce(func.sum(func.coalesce(GasMovement.kg_arrived, GasMovement.kg)), 0)
+        ).filter(
+            GasMovement.batch_id == batch.batch_id,
+            GasMovement.is_initial_adjustment == False
+        ).scalar() or 0
+        kg_enviados = float(kg_enviados_query)
         
         kg_usados = db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).filter(
             FillingOperationDetail.batch_id == batch.batch_id
@@ -766,3 +797,92 @@ def get_active_batch(
         "remaining": round(float(kg_sent) - float(kg_used), 2),
         "last_update": latest_movement.date
     }
+
+
+@router.post("/gas-movements/{movement_id}/expenses")
+def create_movement_expense(
+    movement_id: int,
+    expense: GasMovementExpenseCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    movement = db.query(GasMovement).filter(GasMovement.id == movement_id).first()
+    if not movement:
+        raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+    
+    if not movement.from_location_id:
+        raise HTTPException(status_code=400, detail="Solo se pueden agregar gastos a movimientos de salida")
+    
+    db_expense = GasMovementExpense(
+        movement_id=movement_id,
+        tipo=expense.tipo,
+        monto=expense.monto,
+        descripcion=expense.descripcion,
+        fecha=expense.fecha or datetime.now(timezone.utc)
+    )
+    db.add(db_expense)
+    db.commit()
+    db.refresh(db_expense)
+    
+    return db_expense
+
+
+@router.get("/gas-movements/{movement_id}/expenses", response_model=GasMovementExpensesSummary)
+def get_movement_expenses(
+    movement_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    movement = db.query(GasMovement).filter(GasMovement.id == movement_id).first()
+    if not movement:
+        raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+    
+    expenses = db.query(GasMovementExpense).filter(
+        GasMovementExpense.movement_id == movement_id
+    ).order_by(GasMovementExpense.fecha.desc()).all()
+    
+    topups = db.query(ViaticosTopup).filter(
+        ViaticosTopup.movement_id == movement_id
+    ).order_by(ViaticosTopup.fecha.desc()).all()
+    
+    viaticos_inicial = movement.viaticos or 0
+    viaticos_recargas = sum(t.monto for t in topups)
+    viaticos_totales = viaticos_inicial + viaticos_recargas
+    total_gastos = sum(e.monto for e in expenses)
+    saldo = viaticos_totales - total_gastos
+    
+    return {
+        "viaticos_inicial": viaticos_inicial,
+        "viaticos_recargas": viaticos_recargas,
+        "viaticos_totales": viaticos_totales,
+        "expenses": expenses,
+        "topups": topups,
+        "total_gastos": total_gastos,
+        "saldo": saldo
+    }
+
+
+@router.post("/gas-movements/{movement_id}/viaticos-topup")
+def viaticos_topup(
+    movement_id: int,
+    topup: ViaticosTopupCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    movement = db.query(GasMovement).filter(GasMovement.id == movement_id).first()
+    if not movement:
+        raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+    
+    if not movement.from_location_id:
+        raise HTTPException(status_code=400, detail="Solo se pueden agregar viáticos a movimientos de salida")
+    
+    db_topup = ViaticosTopup(
+        movement_id=movement_id,
+        monto=topup.monto,
+        descripcion=topup.descripcion
+    )
+    db.add(db_topup)
+    db.commit()
+    db.refresh(db_topup)
+    
+    return db_topup
