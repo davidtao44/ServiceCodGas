@@ -284,7 +284,8 @@ def get_gas_movements(
     items = query.options(
         joinedload(GasMovement.vehicle), 
         joinedload(GasMovement.driver),
-        joinedload(GasMovement.expenses)
+        joinedload(GasMovement.expenses),
+        joinedload(GasMovement.received_by)
     ).offset(offset).limit(limit).all()
     
     print(f"[GAS_OPS] get_gas_movements: total={total}, limit={limit}, offset={offset}")
@@ -312,6 +313,9 @@ def get_gas_movements(
             "kg": item.kg,
             "kg_arrived": item.kg_arrived,
             "viaticos": item.viaticos,
+            "received_viaticos_excedente": item.received_viaticos_excedente,
+            "received_by_user_id": item.received_by_user_id,
+            "received_by_user_name": item.received_by.first_name + " " + item.received_by.last_name if item.received_by else None,
             "total_gastos": total_gastos,
             "saldo": (item.viaticos or 0) - total_gastos,
             "status": item.status.value,
@@ -379,6 +383,18 @@ def receive_gas_movement(
     movement.kg_arrived = receive_data.kg_arrived
     movement.status = GasMovementStatus.COMPLETADO
     movement.notes = (movement.notes or "") + f" | Recepción: {receive_data.kg_arrived} kg. " + (receive_data.notes or "")
+    
+    # Calculate viaticos balance
+    viaticos_inicial = movement.viaticos or 0
+    viaticos_recargas = db.query(func.coalesce(func.sum(ViaticosTopup.monto), 0)).filter(ViaticosTopup.movement_id == movement.id).scalar()
+    total_gastos = db.query(func.coalesce(func.sum(GasMovementExpense.monto), 0)).filter(GasMovementExpense.movement_id == movement.id).scalar()
+    viaticos_totales = viaticos_inicial + viaticos_recargas
+    saldo = viaticos_totales - total_gastos
+    
+    if saldo > 0 and receive_data.received_by_user_id:
+        movement.received_viaticos_excedente = saldo
+        movement.received_by_user_id = receive_data.received_by_user_id
+        print(f"[GAS_OPS] Excedente de viáticos: ${saldo:.2f} recibido por user_id: {receive_data.received_by_user_id}")
     
     if movement.to_location_id:
         to_location = db.query(Location).filter(Location.id == movement.to_location_id).first()

@@ -376,6 +376,7 @@ class GasMovementCreate(GasMovementBase):
 class GasMovementReceive(BaseModel):
     kg_arrived: float
     notes: Optional[str] = None
+    received_by_user_id: Optional[int] = None
 
 class GasMovement(GasMovementBase):
     id: int

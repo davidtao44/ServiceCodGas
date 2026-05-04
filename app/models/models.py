@@ -263,6 +263,8 @@ class GasMovement(Base):
     kg = Column(Float, nullable=False)
     kg_arrived = Column(Float, nullable=True)
     viaticos = Column(Float, nullable=True)
+    received_viaticos_excedente = Column(Float, nullable=True)
+    received_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     status = Column(Enum(GasMovementStatus), default=GasMovementStatus.EN_TRANSITO, nullable=False)
     notes = Column(Text, nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -271,7 +273,8 @@ class GasMovement(Base):
     
     from_location = relationship("Location", foreign_keys=[from_location_id], back_populates="movements_from")
     to_location = relationship("Location", foreign_keys=[to_location_id], back_populates="movements_to")
-    creator = relationship("User")
+    creator = relationship("User", foreign_keys=[created_by])
+    received_by = relationship("User", foreign_keys=[received_by_user_id])
     vehicle = relationship("Vehicle")
     driver = relationship("Driver")
     related_movement = relationship("GasMovement", remote_side=[id])
