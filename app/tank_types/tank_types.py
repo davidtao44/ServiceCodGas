@@ -10,7 +10,7 @@ router = APIRouter()
 
 def require_role(allowed_roles: List[str]):
     def role_checker(current_user = Depends(get_current_active_user)):
-        if current_user.role.value not in allowed_roles:
+        if current_user.role not in allowed_roles:
             raise HTTPException(status_code=403, detail="No tienes permisos para esta acción")
         return current_user
     return role_checker

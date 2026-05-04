@@ -9,6 +9,8 @@ class UserRole(str, enum.Enum):
     ADMIN = "admin"
     EMBASADOR = "embasador"
     VENDEDOR = "vendedor"
+    TRANSPORTADOR_N1 = "transportador_n1"
+    TRANSPORTADOR_N2 = "transportador_n2"
 
 class JornadaShift(str, enum.Enum):
     MANANA = "mañana"
@@ -46,7 +48,7 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
-    role = Column(Enum(UserRole), default=UserRole.VENDEDOR, nullable=False)
+    role = Column(String(50), default=UserRole.VENDEDOR.value, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

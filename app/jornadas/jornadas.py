@@ -40,7 +40,7 @@ def create_jornada(
 ):
     seller = db.query(User).filter(
         User.id == jornada.seller_id,
-        User.role == UserRole.VENDEDOR
+        User.role == UserRole.VENDEDOR.value
     ).first()
     if not seller:
         raise HTTPException(status_code=404, detail="Vendedor no encontrado")
