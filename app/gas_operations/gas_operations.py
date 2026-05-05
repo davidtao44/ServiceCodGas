@@ -473,6 +473,59 @@ def update_movement(
 
     return movement
 
+
+@router.put("/gas-movements/{movement_id}/recepcion", response_model=GasMovementSchema)
+def update_recepcion(
+    movement_id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Actualiza solo los campos de recepción (kg_arrived, notes) sin cambiar el estado."""
+    movement = db.query(GasMovement).filter(GasMovement.id == movement_id).first()
+    if not movement:
+        raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+
+    if "kg_arrived" in data and data["kg_arrived"] is not None:
+        movement.kg_arrived = float(data["kg_arrived"])
+
+    if "notes" in data and data["notes"] is not None:
+        movement.notes = data["notes"]
+
+    db.add(movement)
+    db.commit()
+    db.refresh(movement)
+
+    movement = db.query(GasMovement).options(
+        joinedload(GasMovement.from_location),
+        joinedload(GasMovement.to_location),
+        joinedload(GasMovement.vehicle),
+        joinedload(GasMovement.driver),
+    ).filter(GasMovement.id == movement_id).first()
+
+    return movement
+
+
+@router.delete("/gas-movements/{movement_id}/expenses/{expense_id}")
+def delete_expense(
+    movement_id: int,
+    expense_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    expense = db.query(GasMovementExpense).filter(
+        GasMovementExpense.id == expense_id,
+        GasMovementExpense.movement_id == movement_id
+    ).first()
+    
+    if not expense:
+        raise HTTPException(status_code=404, detail="Gasto no encontrado")
+    
+    db.delete(expense)
+    db.commit()
+    
+    return {"message": "Gasto eliminado correctamente"}
+
 @router.post("/gas-operations/fix-embasado")
 def fix_embasado_inventory(
     db: Session = Depends(get_db),
