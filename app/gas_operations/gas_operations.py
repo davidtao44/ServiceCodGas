@@ -442,6 +442,33 @@ def get_movement(
     
     return movement
 
+@router.put("/gas-movements/{movement_id}")
+def update_movement(
+    movement_id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    movement = db.query(GasMovement).filter(GasMovement.id == movement_id).first()
+    if not movement:
+        raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+
+    # Actualizar campos permitidos
+    if "viaticos_inicial" in data:
+        movement.viaticos = float(data["viaticos_inicial"] or 0)
+    if "viaticos_recargas" in data:
+        # Las recargas se manejan por separado via viaticos_topups
+        pass
+    if "status" in data:
+        movement.status = data["status"]
+    if "notes" in data:
+        movement.notes = data["notes"]
+
+    db.commit()
+    db.refresh(movement)
+
+    return movement
+
 @router.post("/gas-operations/fix-embasado")
 def fix_embasado_inventory(
     db: Session = Depends(get_db),
