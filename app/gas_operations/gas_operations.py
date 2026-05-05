@@ -453,12 +453,9 @@ def update_movement(
     if not movement:
         raise HTTPException(status_code=404, detail="Movimiento no encontrado")
 
-    # Actualizar campos permitidos
-    if "viaticos_inicial" in data:
-        movement.viaticos = float(data["viaticos_inicial"] or 0)
-    if "viaticos_recargas" in data:
-        # Las recargas se manejan por separado via viaticos_topups
-        pass
+    # Actualizar campos permitidos (backend usa campo 'viaticos')
+    if "viaticos" in data:
+        movement.viaticos = float(data["viaticos"] or 0)
     if "status" in data:
         movement.status = data["status"]
     if "notes" in data:
