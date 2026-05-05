@@ -277,10 +277,9 @@ class GasMovement(Base):
     to_location = relationship("Location", foreign_keys=[to_location_id], back_populates="movements_to")
     creator = relationship("User", foreign_keys=[created_by])
     received_by = relationship("User", foreign_keys=[received_by_user_id])
-    vehicle = relationship("Vehicle")
-    driver = relationship("Driver")
+    vehicle = relationship("Vehicle", foreign_keys=[vehicle_id])
+    driver = relationship("Driver", foreign_keys=[driver_id])
     related_movement = relationship("GasMovement", remote_side=[id])
-    vehicle = relationship("Vehicle")
     expenses = relationship("GasMovementExpense", back_populates="movement", cascade="all, delete-orphan")
     viaticos_topups = relationship("ViaticosTopup", back_populates="movement", cascade="all, delete-orphan")
 

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, distinct
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 from app.core.database.database import get_db
 from app.models.models import Location, GasMovement, GasMovementStatus, User, FillingOperationDetail, GasLoad, Vehicle, Driver, GasMovementExpense, ViaticosTopup
@@ -12,6 +12,7 @@ from app.schemas.schemas import (
     LocationInventory,
     GasMovement as GasMovementSchema,
     GasMovementCreate,
+    GasMovementUpdate,
     GasMovementReceive,
     GasMovementWithDifference,
     PaginatedResponse,
@@ -442,10 +443,10 @@ def get_movement(
     
     return movement
 
-@router.put("/gas-movements/{movement_id}")
+@router.put("/gas-movements/{movement_id}", response_model=GasMovementSchema)
 def update_movement(
     movement_id: int,
-    data: dict,
+    data: GasMovementUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -453,16 +454,22 @@ def update_movement(
     if not movement:
         raise HTTPException(status_code=404, detail="Movimiento no encontrado")
 
-    # Actualizar campos permitidos (backend usa campo 'viaticos')
-    if "viaticos" in data:
-        movement.viaticos = float(data["viaticos"] or 0)
-    if "status" in data:
-        movement.status = data["status"]
-    if "notes" in data:
-        movement.notes = data["notes"]
+    update_data = data.model_dump(exclude_unset=True)
 
+    for field, value in update_data.items():
+        setattr(movement, field, value)
+
+    db.add(movement)
     db.commit()
     db.refresh(movement)
+
+    # Cargar relaciones para el response
+    movement = db.query(GasMovement).options(
+        joinedload(GasMovement.from_location),
+        joinedload(GasMovement.to_location),
+        joinedload(GasMovement.vehicle),
+        joinedload(GasMovement.driver),
+    ).filter(GasMovement.id == movement_id).first()
 
     return movement
 
@@ -900,6 +907,42 @@ def get_movement_expenses(
         "total_gastos": total_gastos,
         "saldo": saldo
     }
+
+
+@router.put("/gas-movements/{movement_id}/expenses")
+def update_movement_expenses(
+    movement_id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    movement = db.query(GasMovement).filter(GasMovement.id == movement_id).first()
+    if not movement:
+        raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+    
+    # Eliminar gastos existentes y crear nuevos
+    db.query(GasMovementExpense).filter(
+        GasMovementExpense.movement_id == movement_id
+    ).delete()
+    
+    expenses_data = data.get("expenses", [])
+    for exp in expenses_data:
+        # Aceptar ambos formatos: concepto/valor (frontend) o tipo/monto (backend)
+        tipo = exp.get("concepto") or exp.get("tipo", "")
+        monto = float(exp.get("valor") or exp.get("monto", 0) or 0)
+        
+        db_expense = GasMovementExpense(
+            movement_id=movement_id,
+            tipo=tipo,
+            monto=monto,
+            descripcion=tipo,
+            fecha=datetime.now(timezone.utc)
+        )
+        db.add(db_expense)
+    
+    db.commit()
+    
+    return {"message": "Gastos actualizados correctamente"}
 
 
 @router.post("/gas-movements/{movement_id}/viaticos-topup")
