@@ -386,6 +386,7 @@ class GasMovementReceive(BaseModel):
     notes: Optional[str] = None
     received_by_user_id: Optional[int] = None
     received_excess_by: Optional[str] = None
+    received_viaticos_by: Optional[str] = None
 
 class GasMovement(GasMovementBase):
     id: int
@@ -396,6 +397,7 @@ class GasMovement(GasMovementBase):
     related_movement_id: Optional[int] = None
     is_initial_adjustment: bool = False
     received_excess_by: Optional[str] = None
+    received_viaticos_by: Optional[str] = None
     from_location: Optional[Location] = None
     to_location: Optional[Location] = None
     

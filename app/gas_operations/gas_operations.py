@@ -318,6 +318,7 @@ def get_gas_movements(
             "received_by_user_id": item.received_by_user_id,
             "received_by_user_name": item.received_by.first_name + " " + item.received_by.last_name if item.received_by else None,
             "received_excess_by": item.received_excess_by,
+            "received_viaticos_by": item.received_viaticos_by,
             "total_gastos": total_gastos,
             "saldo": (item.viaticos or 0) - total_gastos,
             "status": item.status.value,
@@ -397,6 +398,8 @@ def receive_gas_movement(
     if saldo > 0 and receive_data.received_by_user_id:
         movement.received_viaticos_excedente = saldo
         movement.received_by_user_id = receive_data.received_by_user_id
+        if receive_data.received_viaticos_by:
+            movement.received_viaticos_by = receive_data.received_viaticos_by
         print(f"[GAS_OPS] Excedente de viáticos: ${saldo:.2f} recibido por user_id: {receive_data.received_by_user_id}")
     
     if movement.to_location_id:
@@ -473,6 +476,7 @@ def get_movement(
         "received_by_user_id": movement.received_by_user_id,
         "received_by_user_name": movement.received_by.first_name + " " + movement.received_by.last_name if movement.received_by else None,
         "received_excess_by": movement.received_excess_by,
+        "received_viaticos_by": movement.received_viaticos_by,
         "total_gastos": total_gastos,
         "viaticos_recargas": viaticos_recargas,
         "viaticos_totales": viaticos_totales,
