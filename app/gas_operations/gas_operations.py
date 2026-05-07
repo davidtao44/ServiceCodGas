@@ -317,6 +317,7 @@ def get_gas_movements(
             "received_viaticos_excedente": item.received_viaticos_excedente,
             "received_by_user_id": item.received_by_user_id,
             "received_by_user_name": item.received_by.first_name + " " + item.received_by.last_name if item.received_by else None,
+            "received_excess_by": item.received_excess_by,
             "total_gastos": total_gastos,
             "saldo": (item.viaticos or 0) - total_gastos,
             "status": item.status.value,
@@ -383,6 +384,7 @@ def receive_gas_movement(
     
     movement.kg_arrived = receive_data.kg_arrived
     movement.status = GasMovementStatus.COMPLETADO
+    movement.received_excess_by = current_user.first_name + " " + current_user.last_name
     movement.notes = (movement.notes or "") + f" | Recepción: {receive_data.kg_arrived} kg. " + (receive_data.notes or "")
     
     # Calculate viaticos balance
@@ -470,6 +472,7 @@ def get_movement(
         "received_viaticos_excedente": movement.received_viaticos_excedente,
         "received_by_user_id": movement.received_by_user_id,
         "received_by_user_name": movement.received_by.first_name + " " + movement.received_by.last_name if movement.received_by else None,
+        "received_excess_by": movement.received_excess_by,
         "total_gastos": total_gastos,
         "viaticos_recargas": viaticos_recargas,
         "viaticos_totales": viaticos_totales,
