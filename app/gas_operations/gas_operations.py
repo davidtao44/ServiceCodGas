@@ -500,6 +500,9 @@ def update_movement(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
+    if current_user.role not in ["admin", "superadmin"]:
+        raise HTTPException(status_code=403, detail="No tienes permisos para editar movimientos")
+    
     movement = db.query(GasMovement).filter(GasMovement.id == movement_id).first()
     if not movement:
         raise HTTPException(status_code=404, detail="Movimiento no encontrado")
@@ -532,6 +535,9 @@ def update_recepcion(
     current_user: User = Depends(get_current_active_user)
 ):
     """Actualiza solo los campos de recepción (kg_arrived, notes) sin cambiar el estado."""
+    if current_user.role not in ["admin", "superadmin"]:
+        raise HTTPException(status_code=403, detail="No tienes permisos para editar la recepción")
+    
     movement = db.query(GasMovement).filter(GasMovement.id == movement_id).first()
     if not movement:
         raise HTTPException(status_code=404, detail="Movimiento no encontrado")
@@ -821,6 +827,8 @@ def get_batch_rendimiento(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
+    if current_user.role not in ["admin", "superadmin", "transportador_n1"]:
+        raise HTTPException(status_code=403, detail="No tienes permisos para ver rendimiento de gas")
     embasado_location = db.query(Location).filter(Location.name == "Embasado").first()
     if not embasado_location:
         raise HTTPException(status_code=404, detail="Ubicación Embasado no encontrada")
@@ -956,12 +964,18 @@ def create_movement_expense(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
+    if current_user.role not in ["admin", "superadmin", "transportador_n1", "transportador_n2"]:
+        raise HTTPException(status_code=403, detail="No tienes permisos para agregar gastos")
+    
     movement = db.query(GasMovement).filter(GasMovement.id == movement_id).first()
     if not movement:
         raise HTTPException(status_code=404, detail="Movimiento no encontrado")
     
     if not movement.from_location_id:
         raise HTTPException(status_code=400, detail="Solo se pueden agregar gastos a movimientos de salida")
+    
+    if current_user.role == "transportador_n2" and movement.status != GasMovementStatus.EN_TRANSITO:
+        raise HTTPException(status_code=403, detail="Transportador N2 solo puede agregar gastos a movimientos en tránsito")
     
     db_expense = GasMovementExpense(
         movement_id=movement_id,
@@ -1019,6 +1033,9 @@ def update_movement_expenses(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
+    if current_user.role not in ["admin", "superadmin"]:
+        raise HTTPException(status_code=403, detail="No tienes permisos para editar gastos")
+    
     movement = db.query(GasMovement).filter(GasMovement.id == movement_id).first()
     if not movement:
         raise HTTPException(status_code=404, detail="Movimiento no encontrado")
