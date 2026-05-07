@@ -827,7 +827,7 @@ def get_batch_rendimiento(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    if current_user.role not in ["admin", "superadmin", "transportador_n1"]:
+    if current_user.role not in ["admin", "superadmin"]:
         raise HTTPException(status_code=403, detail="No tienes permisos para ver rendimiento de gas")
     embasado_location = db.query(Location).filter(Location.name == "Embasado").first()
     if not embasado_location:
@@ -974,8 +974,8 @@ def create_movement_expense(
     if not movement.from_location_id:
         raise HTTPException(status_code=400, detail="Solo se pueden agregar gastos a movimientos de salida")
     
-    if current_user.role == "transportador_n2" and movement.status != GasMovementStatus.EN_TRANSITO:
-        raise HTTPException(status_code=403, detail="Transportador N2 solo puede agregar gastos a movimientos en tránsito")
+    if current_user.role in ["transportador_n1", "transportador_n2"] and movement.status != GasMovementStatus.EN_TRANSITO:
+        raise HTTPException(status_code=403, detail="Transportadores solo pueden agregar gastos a movimientos en tránsito")
     
     db_expense = GasMovementExpense(
         movement_id=movement_id,
