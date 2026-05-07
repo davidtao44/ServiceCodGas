@@ -272,6 +272,8 @@ class GasMovement(Base):
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     related_movement_id = Column(Integer, ForeignKey("gas_movements.id"), nullable=True)
     is_initial_adjustment = Column(Boolean, default=False, nullable=False)
+    received_excess_by = Column(String(255), nullable=True)
+    received_viaticos_by = Column(String(255), nullable=True)
     
     from_location = relationship("Location", foreign_keys=[from_location_id], back_populates="movements_from")
     to_location = relationship("Location", foreign_keys=[to_location_id], back_populates="movements_to")
