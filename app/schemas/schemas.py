@@ -373,6 +373,14 @@ class GasMovementCreate(GasMovementBase):
     new_driver: Optional[DriverCreate] = None
     viaticos: Optional[float] = None
 
+class GasMovementUpdate(BaseModel):
+    kg: Optional[float] = None
+    status: Optional[GasMovementStatus] = None
+    notes: Optional[str] = None
+    vehicle_id: Optional[int] = None
+    driver_id: Optional[int] = None
+    viaticos: Optional[float] = None
+
 class GasMovementReceive(BaseModel):
     kg_arrived: float
     notes: Optional[str] = None
