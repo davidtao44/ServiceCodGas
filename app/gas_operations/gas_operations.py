@@ -437,11 +437,54 @@ def get_movement(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    movement = db.query(GasMovement).filter(GasMovement.id == movement_id).first()
+    movement = db.query(GasMovement).options(
+        joinedload(GasMovement.from_location),
+        joinedload(GasMovement.to_location),
+        joinedload(GasMovement.vehicle),
+        joinedload(GasMovement.driver),
+        joinedload(GasMovement.received_by),
+        joinedload(GasMovement.expenses),
+        joinedload(GasMovement.viaticos_topups),
+    ).filter(GasMovement.id == movement_id).first()
+    
     if not movement:
         raise HTTPException(status_code=404, detail="Movimiento no encontrado")
     
-    return movement
+    # Build response with computed fields (same as get_gas_movements)
+    total_gastos = sum(exp.monto for exp in movement.expenses) if movement.expenses else 0
+    viaticos_recargas = sum(t.monto for t in movement.viaticos_topups) if movement.viaticos_topups else 0
+    viaticos_totales = (movement.viaticos or 0) + viaticos_recargas
+    
+    return {
+        "id": movement.id,
+        "date": movement.date,
+        "from_location_id": movement.from_location_id,
+        "to_location_id": movement.to_location_id,
+        "from_custom": movement.from_custom,
+        "to_custom": movement.to_custom,
+        "from_location_name": movement.from_location.name if movement.from_location else movement.from_custom,
+        "to_location_name": movement.to_location.name if movement.to_location else movement.to_custom,
+        "kg": movement.kg,
+        "kg_arrived": movement.kg_arrived,
+        "viaticos": movement.viaticos,
+        "received_viaticos_excedente": movement.received_viaticos_excedente,
+        "received_by_user_id": movement.received_by_user_id,
+        "received_by_user_name": movement.received_by.first_name + " " + movement.received_by.last_name if movement.received_by else None,
+        "total_gastos": total_gastos,
+        "viaticos_recargas": viaticos_recargas,
+        "viaticos_totales": viaticos_totales,
+        "saldo": viaticos_totales - total_gastos,
+        "status": movement.status.value,
+        "notes": movement.notes,
+        "batch_id": movement.batch_id,
+        "vehicle_id": movement.vehicle_id,
+        "vehicle_name": movement.vehicle.name if movement.vehicle else None,
+        "vehicle_plate": movement.vehicle.plate if movement.vehicle else None,
+        "driver_id": movement.driver_id,
+        "driver_name": movement.driver.name if movement.driver else None,
+        "created_by": movement.created_by,
+        "difference": movement.kg - movement.kg_arrived if movement.kg_arrived is not None else None
+    }
 
 @router.put("/gas-movements/{movement_id}", response_model=GasMovementSchema)
 def update_movement(
@@ -993,9 +1036,27 @@ def update_movement_expenses(
         )
         db.add(db_expense)
     
+    # Handle recargas if provided - replace all existing topups
+    if "recargas" in data:
+        new_recargas = float(data["recargas"])
+        # Delete all existing topups for this movement
+        db.query(ViaticosTopup).filter(
+            ViaticosTopup.movement_id == movement_id
+        ).delete()
+        # Create new topup if value > 0
+        if new_recargas > 0:
+            new_topup = ViaticosTopup(
+                movement_id=movement_id,
+                monto=new_recargas,
+                descripcion="Ajuste manual desde edición",
+                fecha=datetime.now(timezone.utc)
+            )
+            db.add(new_topup)
+            print(f"[GAS_OPS] Recargas actualizadas: ${new_recargas} para movimiento {movement_id}")
+    
     db.commit()
     
-    return {"message": "Gastos actualizados correctamente"}
+    return {"message": "Gastos y recargas actualizados correctamente"}
 
 
 @router.post("/gas-movements/{movement_id}/viaticos-topup")
