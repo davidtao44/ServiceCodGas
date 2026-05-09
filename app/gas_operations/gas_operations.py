@@ -78,8 +78,15 @@ def get_location_stock(db: Session, location_id: int) -> float:
                 GasMovement.is_initial_adjustment == False
             ).scalar() or 0)
         
-        stock = kg_in - kg_out
-        print(f"[GAS_OPS] Embasado stock: kg_in={kg_in}, kg_out={kg_out}, stock={stock}")
+        # kg_used = gas consumido en operaciones de embasado/llenado del batch activo
+        kg_used = 0.0
+        if active_batch_id:
+            kg_used = float(db.query(func.coalesce(func.sum(FillingOperationDetail.kg_used), 0)).filter(
+                FillingOperationDetail.batch_id == active_batch_id
+            ).scalar() or 0)
+        
+        stock = kg_in - kg_out - kg_used
+        print(f"[GAS_OPS] Embasado stock: kg_in={kg_in}, kg_out={kg_out}, kg_used={kg_used}, stock={stock}")
         return max(0, stock)
     else:
         kg_in = db.query(func.coalesce(func.sum(func.coalesce(GasMovement.kg_arrived, GasMovement.kg)), 0)).filter(
