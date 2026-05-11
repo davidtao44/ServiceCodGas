@@ -5,7 +5,7 @@ from typing import List, Optional
 from datetime import datetime
 from app.core.database.database import get_db
 from app.models.models import FullCylinderOutput, FullCylinderOutputDetail, TankType, User, FillingOperation, FillingOperationDetail, EmptyCylinderMovement, EmptyCylinderMovementDetail
-from app.schemas.schemas import FullCylinderOutput as FullCylinderOutputSchema, FullCylinderOutputCreate
+from app.schemas.schemas import FullCylinderOutput as FullCylinderOutputSchema, FullCylinderOutputCreate, FullCylinderOutputUpdate
 from app.auth.auth import get_current_active_user
 
 router = APIRouter()
@@ -131,6 +131,46 @@ def get_full_cylinder_outputs(
         "limit": limit,
         "total_pages": total_pages
     }
+
+@router.put("/outputs/{output_id}", response_model=FullCylinderOutputSchema)
+def update_full_cylinder_output(
+    output_id: int,
+    output: FullCylinderOutputUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    db_output = db.query(FullCylinderOutput).filter(FullCylinderOutput.id == output_id).first()
+    if not db_output:
+        raise HTTPException(status_code=404, detail="Salida de cilindros no encontrada")
+    
+    if output.destination is not None:
+        db_output.destination = output.destination
+    if output.transported_by_user_id is not None:
+        db_output.transported_by_user_id = output.transported_by_user_id
+    if output.notes is not None:
+        db_output.notes = output.notes
+    
+    if output.details is not None:
+        old_details = db.query(FullCylinderOutputDetail).filter(
+            FullCylinderOutputDetail.output_id == output_id
+        ).all()
+        for old_d in old_details:
+            db.delete(old_d)
+        
+        for detail in output.details:
+            tank_type = db.query(TankType).filter(TankType.id == detail.cylinder_type_id).first()
+            if not tank_type:
+                raise HTTPException(status_code=404, detail=f"Tipo de cilindro {detail.cylinder_type_id} no encontrado")
+            db_detail = FullCylinderOutputDetail(
+                output_id=output_id,
+                cylinder_type_id=detail.cylinder_type_id,
+                quantity=detail.quantity
+            )
+            db.add(db_detail)
+    
+    db.commit()
+    db.refresh(db_output)
+    return db_output
 
 @router.get("/outputs/summary")
 def get_outputs_summary(

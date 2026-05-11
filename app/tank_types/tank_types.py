@@ -28,7 +28,7 @@ def get_tank_types(
 def create_tank_type(
     tank_type: TankTypeCreate,
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["superadmin"]))
+    current_user = Depends(require_role(["admin", "superadmin"]))
 ):
     db_tank_type = TankType(**tank_type.model_dump())
     db.add(db_tank_type)
@@ -52,7 +52,7 @@ def update_tank_type(
     tank_type_id: int,
     tank_type_update: TankTypeUpdate,
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["superadmin"]))
+    current_user = Depends(require_role(["admin", "superadmin"]))
 ):
     tank_type = db.query(TankType).filter(TankType.id == tank_type_id).first()
     if not tank_type:

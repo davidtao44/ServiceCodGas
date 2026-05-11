@@ -5,7 +5,7 @@ from typing import List, Optional
 from datetime import datetime
 from app.core.database.database import get_db
 from app.models.models import EmptyCylinderMovement, EmptyCylinderMovementDetail, TankType, User
-from app.schemas.schemas import EmptyCylinderMovement as EmptyCylinderMovementSchema, EmptyCylinderMovementCreate, PaginatedResponse
+from app.schemas.schemas import EmptyCylinderMovement as EmptyCylinderMovementSchema, EmptyCylinderMovementCreate, EmptyCylinderMovementUpdate, PaginatedResponse
 from app.auth.auth import get_current_active_user
 
 router = APIRouter()
@@ -110,6 +110,46 @@ def get_empty_cylinder_movements(
         "limit": limit,
         "total_pages": total_pages
     }
+
+@router.put("/empty-cylinders/{movement_id}")
+def update_empty_cylinder_movement(
+    movement_id: int,
+    movement: EmptyCylinderMovementUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    db_movement = db.query(EmptyCylinderMovement).filter(EmptyCylinderMovement.id == movement_id).first()
+    if not db_movement:
+        raise HTTPException(status_code=404, detail="Movimiento de cilindros vacíos no encontrado")
+    
+    if movement.source is not None:
+        db_movement.source = movement.source
+    if movement.delivered_by_user_id is not None:
+        db_movement.delivered_by_user_id = movement.delivered_by_user_id
+    if movement.notes is not None:
+        db_movement.notes = movement.notes
+    
+    if movement.details is not None:
+        old_details = db.query(EmptyCylinderMovementDetail).filter(
+            EmptyCylinderMovementDetail.movement_id == movement_id
+        ).all()
+        for old_d in old_details:
+            db.delete(old_d)
+        
+        for detail in movement.details:
+            tank_type = db.query(TankType).filter(TankType.id == detail.cylinder_type_id).first()
+            if not tank_type:
+                raise HTTPException(status_code=404, detail=f"Tipo de cilindro {detail.cylinder_type_id} no encontrado")
+            db_detail = EmptyCylinderMovementDetail(
+                movement_id=movement_id,
+                cylinder_type_id=detail.cylinder_type_id,
+                quantity=detail.quantity
+            )
+            db.add(db_detail)
+    
+    db.commit()
+    db.refresh(db_movement)
+    return db_movement
 
 @router.get("/empty-cylinders/summary")
 def get_empty_cylinders_summary(
