@@ -5,7 +5,7 @@ from typing import List, Optional
 from datetime import datetime
 from app.core.database.database import get_db
 from app.models.models import FillingOperation, FillingOperationDetail, TankType, User, EmptyCylinderMovement, EmptyCylinderMovementDetail, GasLoad, Location, GasMovement, GasMovementStatus
-from app.schemas.schemas import FillingOperation as FillingOperationSchema, FillingOperationCreate
+from app.schemas.schemas import FillingOperation as FillingOperationSchema, FillingOperationCreate, FillingOperationUpdate
 from app.auth.auth import get_current_active_user
 
 
@@ -316,6 +316,56 @@ def get_filling_operations(
         "limit": limit,
         "total_pages": total_pages
     }
+
+@router.put("/filling/{operation_id}", response_model=FillingOperationSchema)
+def update_filling_operation(
+    operation_id: int,
+    operation: FillingOperationUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    db_operation = db.query(FillingOperation).filter(FillingOperation.id == operation_id).first()
+    if not db_operation:
+        raise HTTPException(status_code=404, detail="Operación de embasado no encontrada")
+    
+    if operation.performed_by_user_id is not None:
+        db_operation.performed_by_user_id = operation.performed_by_user_id
+    if operation.notes is not None:
+        db_operation.notes = operation.notes
+    
+    if operation.details is not None:
+        old_details = db.query(FillingOperationDetail).filter(
+            FillingOperationDetail.operation_id == operation_id
+        ).all()
+        
+        # Preservar el batch_id original — NUNCA reasignar al batch activo actual
+        original_batch_id = old_details[0].batch_id if old_details else None
+        print(f"[FILLING_EDIT DEBUG] operation_id={operation_id}, original_batch_id={original_batch_id}, old_details_count={len(old_details)}")
+        for old_d in old_details:
+            print(f"[FILLING_EDIT DEBUG]   deleting detail: id={old_d.id}, type={old_d.cylinder_type_id}, qty={old_d.quantity}, kg={old_d.kg_used}, batch={old_d.batch_id}")
+            db.delete(old_d)
+        
+        for detail in operation.details:
+            tank_type = db.query(TankType).filter(TankType.id == detail.cylinder_type_id).first()
+            if not tank_type:
+                raise HTTPException(status_code=404, detail=f"Tipo de cilindro {detail.cylinder_type_id} no encontrado")
+            kg_used = detail.quantity * tank_type.capacity
+            print(f"[FILLING_EDIT DEBUG]   adding detail: type={detail.cylinder_type_id}, qty={detail.quantity}, kg={kg_used}, batch={original_batch_id}")
+            db_detail = FillingOperationDetail(
+                operation_id=operation_id,
+                cylinder_type_id=detail.cylinder_type_id,
+                quantity=detail.quantity,
+                kg_used=kg_used,
+                batch_id=original_batch_id  # ← Usar el batch ORIGINAL, no el activo actual
+            )
+            db.add(db_detail)
+    
+    db.commit()
+    db.refresh(db_operation)
+    print(f"[FILLING_EDIT DEBUG] after save: id={db_operation.id}, details_count={len(db_operation.details)}")
+    for d in db_operation.details:
+        print(f"[FILLING_EDIT DEBUG]   detail: id={d.id}, type={d.cylinder_type_id}, qty={d.quantity}, kg={d.kg_used}, batch={d.batch_id}")
+    return db_operation
 
 @router.get("/filling/summary")
 def get_filling_summary(

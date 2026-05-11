@@ -270,6 +270,23 @@ class FullCylinderOutput(FullCylinderOutputBase):
     class Config:
         from_attributes = True
 
+class EmptyCylinderMovementUpdate(BaseModel):
+    source: Optional[str] = None
+    delivered_by_user_id: Optional[int] = None
+    notes: Optional[str] = None
+    details: Optional[List[EmptyCylinderMovementDetailCreate]] = None
+
+class FillingOperationUpdate(BaseModel):
+    performed_by_user_id: Optional[int] = None
+    notes: Optional[str] = None
+    details: Optional[List[FillingOperationDetailCreate]] = None
+
+class FullCylinderOutputUpdate(BaseModel):
+    destination: Optional[str] = None
+    transported_by_user_id: Optional[int] = None
+    notes: Optional[str] = None
+    details: Optional[List[FullCylinderOutputDetailCreate]] = None
+
 class VehicleBase(BaseModel):
     name: str
     plate: Optional[str] = None
