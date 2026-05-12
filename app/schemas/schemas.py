@@ -1,7 +1,7 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
-from app.models.models import UserRole, JornadaShift, JornadaStatus, DebtStatus, GasMovementStatus
+from app.models.models import UserRole, JornadaShift, JornadaStatus, DebtStatus, GasMovementStatus, GastoTipo
 
 class UserBase(BaseModel):
     email: EmailStr
@@ -94,23 +94,40 @@ class EmbasadoResponse(BaseModel):
     filled_quantity: int
     sent_to_sale_quantity: int
 
+# Esquemas de Jornada
 class JornadaBase(BaseModel):
     shift: JornadaShift
 
 class JornadaCreate(JornadaBase):
     seller_id: int
 
+class JornadaCierre(BaseModel):
+    """Schema para cerrar una jornada"""
+    cylinders_vacios: Optional[Dict[str, int]] = None  # {"30lb": 5, "40lb": 2}
+    cylinders_llenos: Optional[Dict[str, int]] = None  # {"30lb": 10, "40lb": 3}
+    dinero: float = 0.0
+    gastos: Optional[Dict[str, float]] = None  # {"combustible": 50, "peaje": 30, "otro": 100}
+
 class JornadaUpdate(BaseModel):
     status: Optional[JornadaStatus] = None
-    total_money: Optional[float] = None
+    cylinders_vacios: Optional[str] = None
+    cylinders_llenos: Optional[str] = None
+    dinero: Optional[float] = None
+    gastos: Optional[str] = None
 
 class Jornada(JornadaBase):
     id: int
     date: datetime
     seller_id: int
     status: JornadaStatus
+    hora_inicio: datetime
+    hora_fin: Optional[datetime] = None
+    cylinders_vacios: Optional[str] = None
+    cylinders_llenos: Optional[str] = None
+    dinero: float
+    gastos: Optional[str] = None
     total_sales: float
-    total_money: float
+    total_gastos: float
     created_at: datetime
     updated_at: Optional[datetime] = None
     seller: User

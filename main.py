@@ -24,8 +24,6 @@ from app.drivers.drivers import router as drivers_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manejo del ciclo de vida de la aplicación."""
-    # Startup
     Base.metadata.create_all(bind=engine)
     if check_connection():
         print("✓ Conexión a PostgreSQL establecida")
@@ -33,9 +31,7 @@ async def lifespan(app: FastAPI):
         print("✗ Error al conectar con PostgreSQL")
     
     yield
-    # Shutdown
     engine.dispose()
-    print("✓ Conexiones cerradas")
 
 
 app = FastAPI(
@@ -45,13 +41,9 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-origins = [
-    "*"
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -60,7 +52,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/auth", tags=["authentication"])
 app.include_router(users_router, prefix="/api", tags=["usuarios"])
 app.include_router(tank_types_router, prefix="/api", tags=["tipos-cilindros"])
-app.include_router(operations_router, prefix="/api", tags=["operaciones"])  # <-- PRIMERO para que /inventory funcione
+app.include_router(operations_router, prefix="/api", tags=["operaciones"])
 app.include_router(inventory_router, prefix="/api", tags=["inventario"])
 app.include_router(embasado_router, prefix="/api", tags=["embasado"])
 app.include_router(ventas_router, prefix="/api", tags=["ventas"])
@@ -73,7 +65,6 @@ app.include_router(outputs_router, prefix="/api", tags=["salidas"])
 app.include_router(gas_loads_router, prefix="/api", tags=["carga-gas"])
 app.include_router(vehicles_router, prefix="/api", tags=["vehiculos"])
 app.include_router(drivers_router, prefix="/api", tags=["conductores"])
-app.include_router(operations_router, prefix="/api", tags=["operaciones"])
 app.include_router(gas_operations_router, prefix="/api", tags=["operaciones-gas"])
 
 @app.get("/")
@@ -83,5 +74,3 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
-
-

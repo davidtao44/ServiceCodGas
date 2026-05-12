@@ -12,14 +12,24 @@ class UserRole(str, enum.Enum):
     TRANSPORTADOR_N1 = "transportador_n1"
     TRANSPORTADOR_N2 = "transportador_n2"
 
+class JornadaStatus(str, enum.Enum):
+    ABIERTA = "abierta"
+    CERRADA = "cerrada"
+    CONFIRMADA = "confirmada"
+
 class JornadaShift(str, enum.Enum):
     MANANA = "mañana"
     TARDE = "tarde"
     NOCHE = "noche"
 
-class JornadaStatus(str, enum.Enum):
-    ABIERTA = "abierta"
-    CERRADA = "cerrada"
+# Lista de gastos fijos para jornada noche
+class GastoTipo(str, enum.Enum):
+    COMBUSTIBLE = "combustible"
+    PEAJE = "peaje"
+    ALIMENTACION = "alimentacion"
+    VIATICOS = "viaticos"
+    REPARACIONES = "reparaciones"
+    OTRO = "otro"
 
 class DebtStatus(str, enum.Enum):
     PENDIENTE = "pendiente"
@@ -91,8 +101,23 @@ class Jornada(Base):
     shift = Column(Enum(JornadaShift), nullable=False)
     seller_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     status = Column(Enum(JornadaStatus), default=JornadaStatus.ABIERTA, nullable=False)
+    
+    # Tiempos
+    hora_inicio = Column(DateTime(timezone=True), server_default=func.now())
+    hora_fin = Column(DateTime(timezone=True), nullable=True)
+    
+    # Datos de cierre (cilindros vacíos y llenos restantes)
+    cylinders_vacios = Column(String, nullable=True)  # JSON: {"30lb": 5, "40lb": 2}
+    cylinders_llenos = Column(String, nullable=True)   # JSON: {"30lb": 10, "40lb": 3}
+    
+    # Dinero y gastos
+    dinero = Column(Float, default=0.0)  # Dinero dejado (mañana/tarde) o total (noche)
+    gastos = Column(String, nullable=True)  # JSON: {"combustible": 50, "peaje": 30, "otro": 100}
+    
+    # Totales calculados
     total_sales = Column(Float, default=0.0)
-    total_money = Column(Float, default=0.0)
+    total_gastos = Column(Float, default=0.0)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
